@@ -9,3 +9,18 @@ type Predeposit @entity(immutable: true) {
   timestamp: BigInt!
   transactionHash: Bytes!
 }
+
+type USDaiStats @entity(immutable: false) {
+  id: Bytes!
+  totalVolume: BigInt! # Cumulative transfer amount
+  transferCount: BigInt!
+}
+
+type USDaiMonthData @entity(immutable: false) {
+  id: Bytes! # Year-month encoded (e.g., "2026-01")
+  year: Int! # Year (e.g., 2026)
+  month: Int! # Month (1-12)
+  timestamp: BigInt! # Start of month timestamp (for sorting/filtering)
+  volume: BigInt! # Total transfer volume for this month
+  transferCount: BigInt! # Number of transfers
+}

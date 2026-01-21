@@ -25,3 +25,24 @@ dataSources:
             address,uint256,uint32)
           handler: handlePredepositVaultDeposit
       file: ./src/predeposit-vault.ts
+  - kind: ethereum
+    name: USDai
+    network: sepolia
+    source:
+      abi: USDai
+      address: "0xeb29fbaa2d509e43313c196a82f4ad75fa251285"
+      startBlock: 8311763
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - USDaiStats
+        - USDaiMonthData
+      abis:
+        - name: USDai
+          file: ../out/USDai.sol/USDai.json
+      eventHandlers:
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleTransfer
+      file: ./src/usdai.ts
