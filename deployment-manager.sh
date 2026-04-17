@@ -45,7 +45,7 @@ usage() {
     echo "  deploy-swap-adapter <base token> <swap router> <tokens> <admin>"
     echo "  deploy-price-oracle <base token price feed> <tokens> <price feeds> <admin>"
     echo "  deploy-oadapter <token> <lz endpoint>"
-    echo "  deploy-otoken <name> <symbol>"
+    echo "  deploy-otoken <oadapter> <name> <symbol>"
     echo "  deploy-base-yield-escrow <deployer> <base token> <multisig>"
     echo ""
     echo "  upgrade-usdai"

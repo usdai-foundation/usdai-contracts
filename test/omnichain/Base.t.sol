@@ -127,10 +127,10 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
         setUpEndpoints(6, LibraryType.UltraLightNode);
 
         // Deploy tokens
-        OToken usdtHomeTokenImpl = new OToken();
-        OToken usdtAwayTokenImpl = new OToken();
-        OToken usdaiAwayTokenImpl = new OToken();
-        OToken stakedUsdaiAwayTokenImpl = new OToken();
+        OToken usdtHomeTokenImpl = new OToken(address(0));
+        OToken usdtAwayTokenImpl = new OToken(address(0));
+        OToken usdaiAwayTokenImpl = new OToken(address(0));
+        OToken stakedUsdaiAwayTokenImpl = new OToken(address(0));
 
         vm.prank(user);
         usdtHomeToken6Decimals = new TestERC20("USDT Home Token", "USDT", 6, initialBalance / 1e12);
@@ -317,6 +317,48 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
         usdaiQueuedDepositor.updateDepositEidWhitelist(usdtAwayEid, usdtHomeEid, true);
         usdaiQueuedDepositor.updateDepositEidWhitelist(usdtAwayEid, usdtAwayEid, true);
 
+        // Redeploy omnichain tokens
+        usdtHomeTokenImpl = new OToken(address(usdtHomeOAdapter));
+        usdtAwayTokenImpl = new OToken(address(usdtAwayOAdapter));
+        usdaiAwayTokenImpl = new OToken(address(usdaiAwayOAdapter));
+        stakedUsdaiAwayTokenImpl = new OToken(address(stakedUsdaiAwayOAdapter));
+
+        /* Lookup proxy admin from EIP-1967 storage slot */
+        proxyAdmin = address(uint160(uint256(vm.load(address(usdtHomeToken), ERC1967Utils.ADMIN_SLOT))));
+
+        ProxyAdmin(proxyAdmin).upgradeAndCall(
+            ITransparentUpgradeableProxy(address(usdtHomeToken)),
+            address(usdtHomeTokenImpl),
+            "" // No additional initialization data
+        );
+
+        /* Lookup proxy admin from EIP-1967 storage slot */
+        proxyAdmin = address(uint160(uint256(vm.load(address(usdtAwayToken), ERC1967Utils.ADMIN_SLOT))));
+
+        ProxyAdmin(proxyAdmin).upgradeAndCall(
+            ITransparentUpgradeableProxy(address(usdtAwayToken)),
+            address(usdtAwayTokenImpl),
+            "" // No additional initialization data
+        );
+
+        /* Lookup proxy admin from EIP-1967 storage slot */
+        proxyAdmin = address(uint160(uint256(vm.load(address(usdaiAwayToken), ERC1967Utils.ADMIN_SLOT))));
+
+        ProxyAdmin(proxyAdmin).upgradeAndCall(
+            ITransparentUpgradeableProxy(address(usdaiAwayToken)),
+            address(usdaiAwayTokenImpl),
+            "" // No additional initialization data
+        );
+
+        /* Lookup proxy admin from EIP-1967 storage slot */
+        proxyAdmin = address(uint160(uint256(vm.load(address(stakedUsdaiAwayToken), ERC1967Utils.ADMIN_SLOT))));
+
+        ProxyAdmin(proxyAdmin).upgradeAndCall(
+            ITransparentUpgradeableProxy(address(stakedUsdaiAwayToken)),
+            address(stakedUsdaiAwayTokenImpl),
+            "" // No additional initialization data
+        );
+
         // Configure and wire the USDT OAdapters together
         address[] memory oAdapters = new address[](6);
         oAdapters[0] = address(usdtHomeOAdapter);
@@ -362,22 +404,14 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
             "" // No additional initialization data
         );
 
-        // Grant minter roles
-        AccessControl(address(usdtHomeToken)).grantRole(usdtHomeToken.BRIDGE_ADMIN_ROLE(), address(usdtHomeOAdapter));
-        AccessControl(address(usdtAwayToken)).grantRole(usdtAwayToken.BRIDGE_ADMIN_ROLE(), address(usdtAwayOAdapter));
-
-        // Grant bridge admin roles for USDAI and staked USDAI
-        AccessControl(address(usdaiAwayToken)).grantRole(keccak256("BRIDGE_ADMIN_ROLE"), address(usdaiAwayOAdapter));
-        AccessControl(address(stakedUsdaiAwayToken)).grantRole(
-            keccak256("BRIDGE_ADMIN_ROLE"), address(stakedUsdaiAwayOAdapter)
-        );
-
         // Mint tokens to users
-        AccessControl(address(usdtAwayToken)).grantRole(usdtAwayToken.BRIDGE_ADMIN_ROLE(), address(this));
+        vm.startPrank(address(usdtAwayOAdapter));
         usdtAwayToken.mint(user, initialBalance);
         usdtAwayToken.mint(blacklistedUser, initialBalance);
-        AccessControl(address(usdtHomeToken)).grantRole(usdtHomeToken.BRIDGE_ADMIN_ROLE(), address(this));
+        vm.stopPrank();
+        vm.startPrank(address(usdtHomeOAdapter));
         usdtHomeToken.mint(user, initialBalance);
+        vm.stopPrank();
 
         // Set user as blacklisted
         AccessControl(address(stakedUsdai)).grantRole(keccak256("BLACKLIST_ADMIN_ROLE"), address(this));

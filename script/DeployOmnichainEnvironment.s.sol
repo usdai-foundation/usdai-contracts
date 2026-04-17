@@ -4,7 +4,6 @@ pragma solidity 0.8.29;
 import "forge-std/Script.sol";
 
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 import {OToken} from "src/omnichain/OToken.sol";
 import {OAdapter} from "src/omnichain/OAdapter.sol";
@@ -34,7 +33,8 @@ contract DeployOmnichainEnvironment is Deployer {
 
     function run(address deployer, address lzEndpoint, address multisig) public broadcast useDeployment {
         // Deploy OToken implemetation
-        OToken otokenImpl = new OToken();
+        OToken usdaiOtokenImpl = new OToken(OADAPTER_USDAI_ADDRESS);
+        OToken stakedUSDaiOtokenImpl = new OToken(OADAPTER_STAKED_USDAI_ADDRESS);
 
         // Prepare Create3 Calldata for OToken USDai
         if (CREATEX.computeCreate3Address(keccak256(abi.encode(deployer, USDAI_SALT))) != USDAI_ADDRESS) {
@@ -46,7 +46,7 @@ contract DeployOmnichainEnvironment is Deployer {
             abi.encodePacked(
                 type(TransparentUpgradeableProxy).creationCode,
                 abi.encode(
-                    address(otokenImpl),
+                    address(usdaiOtokenImpl),
                     deployer,
                     abi.encodeWithSelector(OToken.initialize.selector, "USDai", "USDai", multisig)
                 )
@@ -63,7 +63,7 @@ contract DeployOmnichainEnvironment is Deployer {
             abi.encodePacked(
                 type(TransparentUpgradeableProxy).creationCode,
                 abi.encode(
-                    address(otokenImpl),
+                    address(stakedUSDaiOtokenImpl),
                     deployer,
                     abi.encodeWithSelector(OToken.initialize.selector, "Staked USDai", "sUSDai", multisig)
                 )
@@ -92,14 +92,6 @@ contract DeployOmnichainEnvironment is Deployer {
             abi.encodePacked(type(OAdapter).creationCode, abi.encode(STAKED_USDAI_ADDRESS, lzEndpoint, msg.sender))
         );
 
-        // Prepare grant role calldata
-        bytes memory grantRoleUsdaiCalldata = abi.encodeWithSelector(
-            IAccessControl.grantRole.selector, keccak256(bytes("BRIDGE_ADMIN_ROLE")), OADAPTER_USDAI_ADDRESS
-        );
-        bytes memory grantRoleStakedUsdaiCalldata = abi.encodeWithSelector(
-            IAccessControl.grantRole.selector, keccak256(bytes("BRIDGE_ADMIN_ROLE")), OADAPTER_STAKED_USDAI_ADDRESS
-        );
-
         // Print calldata
         console.log("from deployer multisig");
         console.log("target", address(CREATEX));
@@ -111,15 +103,6 @@ contract DeployOmnichainEnvironment is Deployer {
         console.logBytes(oadapterUSDaiCalldata);
         console.log("OAdapter Staked USDai calldata");
         console.logBytes(oadapterStakedUSDaiCalldata);
-        console.log("");
-        console.log("from admin multisig");
-        console.log("target", USDAI_ADDRESS);
-        console.log("Grant Bridge Admin Role USDai calldata");
-        console.logBytes(grantRoleUsdaiCalldata);
-        console.log("");
-        console.log("target", STAKED_USDAI_ADDRESS);
-        console.log("Grant Bridge Admin Role Staked USDai calldata");
-        console.logBytes(grantRoleStakedUsdaiCalldata);
 
         // Log deployment
         _deployment.oTokenUSDai = USDAI_ADDRESS;

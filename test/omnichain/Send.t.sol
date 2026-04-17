@@ -19,7 +19,9 @@ import {RateLimiter} from "@layerzerolabs/lz-evm-oapp-v2/contracts/oapp/utils/Ra
 
 // OZ imports
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
+import {ITransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 // Forge imports
 
@@ -54,8 +56,8 @@ contract OAdapterSendTest is TestHelperOz5 {
         setUpEndpoints(2, LibraryType.UltraLightNode);
 
         // Deploy tokens
-        OToken aTokenImpl = new OToken();
-        OToken bTokenImpl = new OToken();
+        OToken aTokenImpl = new OToken(address(0));
+        OToken bTokenImpl = new OToken(address(0));
 
         // Deploy token proxies
         TransparentUpgradeableProxy aTokenProxy = new TransparentUpgradeableProxy(
@@ -90,6 +92,28 @@ contract OAdapterSendTest is TestHelperOz5 {
             )
         );
 
+        // Redeploy tokens
+        aTokenImpl = new OToken(address(aOAdapter));
+        bTokenImpl = new OToken(address(bOAdapter));
+
+        /* Lookup proxy admin from EIP-1967 storage slot */
+        address proxyAdmin = address(uint160(uint256(vm.load(address(aToken), ERC1967Utils.ADMIN_SLOT))));
+
+        ProxyAdmin(proxyAdmin).upgradeAndCall(
+            ITransparentUpgradeableProxy(address(aToken)),
+            address(aTokenImpl),
+            "" // No additional initialization data
+        );
+
+        /* Lookup proxy admin from EIP-1967 storage slot */
+        proxyAdmin = address(uint160(uint256(vm.load(address(bToken), ERC1967Utils.ADMIN_SLOT))));
+
+        ProxyAdmin(proxyAdmin).upgradeAndCall(
+            ITransparentUpgradeableProxy(address(bToken)),
+            address(bTokenImpl),
+            "" // No additional initialization data
+        );
+
         // Configure and wire the OFTs together
         address[] memory ofts = new address[](2);
         ofts[0] = address(aOAdapter);
@@ -100,15 +124,13 @@ contract OAdapterSendTest is TestHelperOz5 {
         aOAdapter.setRateLimits(rateLimitConfigsA);
         bOAdapter.setRateLimits(rateLimitConfigsB);
 
-        // Grant minter roles
-        AccessControl(address(aToken)).grantRole(aToken.BRIDGE_ADMIN_ROLE(), address(aOAdapter));
-        AccessControl(address(bToken)).grantRole(bToken.BRIDGE_ADMIN_ROLE(), address(bOAdapter));
-
         // Mint tokens to users
-        AccessControl(address(aToken)).grantRole(aToken.BRIDGE_ADMIN_ROLE(), address(this));
-        AccessControl(address(bToken)).grantRole(bToken.BRIDGE_ADMIN_ROLE(), address(this));
+        vm.startPrank(address(aOAdapter));
         aToken.mint(userA, initialBalance);
+        vm.stopPrank();
+        vm.startPrank(address(bOAdapter));
         bToken.mint(userB, initialBalance);
+        vm.stopPrank();
     }
 
     // Test the constructor to ensure initial setup and state are correct

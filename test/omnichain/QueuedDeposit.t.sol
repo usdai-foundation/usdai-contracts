@@ -16,7 +16,6 @@ import {IUSDaiQueuedDepositor} from "src/interfaces/IUSDaiQueuedDepositor.sol";
 import {IOUSDaiUtility} from "src/interfaces/IOUSDaiUtility.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract USDaiQueuedDepositTest is OmnichainBaseTest {
     using OptionsBuilder for bytes;
@@ -24,7 +23,7 @@ contract USDaiQueuedDepositTest is OmnichainBaseTest {
     function setUp() public override {
         super.setUp();
 
-        AccessControl(address(usdtHomeToken)).grantRole(usdtHomeToken.BRIDGE_ADMIN_ROLE(), address(this));
+        vm.prank(address(usdtHomeOAdapter));
         usdtHomeToken.mint(user, 20_000_000 ether);
     }
 

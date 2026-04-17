@@ -11,9 +11,13 @@ import {OToken} from "src/omnichain/OToken.sol";
 import {Deployer} from "./utils/Deployer.s.sol";
 
 contract DeployOToken is Deployer {
-    function run(string memory name, string memory symbol) public broadcast useDeployment returns (address) {
+    function run(
+        address oAdapter,
+        string memory name,
+        string memory symbol
+    ) public broadcast useDeployment returns (address) {
         // Deploy OToken implementation
-        OToken otokenImpl = new OToken();
+        OToken otokenImpl = new OToken(oAdapter);
         console.log("OToken implementation", address(otokenImpl));
 
         // Deploy OToken proxy

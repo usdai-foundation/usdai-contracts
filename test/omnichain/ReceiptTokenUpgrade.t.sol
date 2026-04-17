@@ -63,6 +63,7 @@ contract ReceiptTokenUpgradeTest is OmnichainBaseTest {
         vm.stopPrank();
 
         // Mint some tokens to another user
+        vm.prank(address(usdtHomeOAdapter));
         usdtHomeToken.mint(anotherUser, initialBalance);
         vm.startPrank(anotherUser);
         usdtHomeToken.approve(address(oUsdaiUtility), type(uint256).max);
