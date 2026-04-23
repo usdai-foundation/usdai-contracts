@@ -706,4 +706,51 @@ library LoanRouterPositionManagerLogic {
             liquidationTimestamp: 0
         });
     }
+
+    /**
+     * @notice Deposit loan repayment
+     * @param depositsStorage Deposits storage
+     * @param loansStorage Loans storage
+     * @param usdai USDai
+     * @param currencyToken Currency token address
+     * @param depositAmount Deposit amount
+     * @param usdaiAmountMinimum Minimum USDai amount
+     * @param data Swap data
+     * @return USDai deposit amount
+     */
+    function depositLoanRepayment(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
+        LoanRouterPositionManager.Loans storage loansStorage,
+        IUSDai usdai,
+        address currencyToken,
+        uint256 depositAmount,
+        uint256 usdaiAmountMinimum,
+        bytes calldata data
+    ) external returns (uint256) {
+        /* Validate repayment balance */
+        if (depositAmount > loansStorage.repaymentBalances[currencyToken].repayment) {
+            revert PositionManager.InsufficientBalance();
+        }
+
+        /* Update repayment balances */
+        loansStorage.repaymentBalances[currencyToken].repayment -= depositAmount;
+
+        /* Get USDai deposit amount */
+        uint256 usdaiDepositAmount;
+        if (currencyToken == address(usdai)) {
+            usdaiDepositAmount = depositAmount;
+        } else {
+            /* Approve currency token */
+            IERC20(currencyToken).forceApprove(address(usdai), depositAmount);
+
+            /* Swap currency token to USDai */
+            usdaiDepositAmount = usdai.deposit(currencyToken, depositAmount, usdaiAmountMinimum, address(this), data);
+        }
+
+        /* Update deposits balance */
+        depositsStorage.balance += usdaiDepositAmount;
+
+        /* Return USDai deposit amount */
+        return usdaiDepositAmount;
+    }
 }

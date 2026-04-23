@@ -452,28 +452,10 @@ abstract contract LoanRouterPositionManager is
         uint256 usdaiAmountMinimum,
         bytes calldata data
     ) external onlyRole(STRATEGY_ADMIN_ROLE) nonReentrant {
-        /* Validate repayment balance */
-        if (depositAmount > _getLoansStorage().repaymentBalances[currencyToken].repayment) {
-            revert InsufficientBalance();
-        }
-
-        /* Update repayment balances */
-        _getLoansStorage().repaymentBalances[currencyToken].repayment -= depositAmount;
-
-        /* Get USDai deposit amount */
-        uint256 usdaiDepositAmount;
-        if (currencyToken == address(_usdai)) {
-            usdaiDepositAmount = depositAmount;
-        } else {
-            /* Approve currency token */
-            IERC20(currencyToken).forceApprove(address(_usdai), depositAmount);
-
-            /* Swap currency token to USDai */
-            usdaiDepositAmount = _usdai.deposit(currencyToken, depositAmount, usdaiAmountMinimum, address(this), data);
-        }
-
-        /* Update deposits balance */
-        _getDepositsStorage().balance += usdaiDepositAmount;
+        /* Handle loan repayment deposit accounting and swap */
+        uint256 usdaiDepositAmount = LoanRouterPositionManagerLogic.depositLoanRepayment(
+            _getDepositsStorage(), _getLoansStorage(), _usdai, currencyToken, depositAmount, usdaiAmountMinimum, data
+        );
 
         /* Emit LoanRepaymentDeposited */
         emit LoanRepaymentDeposited(currencyToken, depositAmount, usdaiDepositAmount);
