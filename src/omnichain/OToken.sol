@@ -28,6 +28,11 @@ contract OToken is
     /*------------------------------------------------------------------------*/
 
     /**
+     * @notice Implementation version
+     */
+    string public constant IMPLEMENTATION_VERSION = "1.1";
+
+    /**
      * @notice Pause admin role
      */
     bytes32 public constant PAUSE_ADMIN_ROLE = keccak256("PAUSE_ADMIN_ROLE");
