@@ -1,3 +1,7 @@
+* OToken v1.1 - 04/24/2026
+    * Replace `BRIDGE_ADMIN_ROLE` with immutable address.
+    * Add `pause()` and `unpause()` APIs.
+
 * USDai v1.5 - 04/24/2026
     * Remove completed `convertBaseToken()` function.
     * Remove supply cap.
