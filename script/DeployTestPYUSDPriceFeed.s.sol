@@ -28,13 +28,13 @@ contract TestPYUSDPriceFeed is AggregatorV3Interface {
 
     function latestRoundData()
         external
-        pure
+        view
         returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
     {
         roundId = 36893488147419103788;
         answer = 99997961 * 1e10;
-        startedAt = 1765836014;
-        updatedAt = 1765836047;
+        startedAt = block.timestamp;
+        updatedAt = block.timestamp;
         answeredInRound = 36893488147419103788;
     }
 }

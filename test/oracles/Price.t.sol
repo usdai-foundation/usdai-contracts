@@ -14,6 +14,7 @@ contract ChainlinkPriceOracleTest is BaseTest {
     address constant USDC_ARBITRUM_PRICE_FEED = 0x50834F3163758fcC1Df9973b6e91f0F0F0434aD3; // USDC_ARBITRUM/USD
     address constant DAI_ARBITRUM = 0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1;
     address constant DAI_ARBITRUM_PRICE_FEED = 0xc5C8E77B397E531B8EC06BFb0048328B30E9eCfB; // DAI_ARBITRUM/USD
+    address constant ARBITRUM_SEQUENCER_UPTIME_FEED = 0xFdB631F5EE196F0ed6FAa767959853A9F217697D;
 
     ChainlinkPriceOracle public oracle;
 
@@ -33,7 +34,8 @@ contract ChainlinkPriceOracleTest is BaseTest {
         priceFeeds[2] = WETH_ARBITRUM_PRICE_FEED;
 
         // Deploy oracle
-        oracle = new ChainlinkPriceOracle(PYUSD_PRICE_FEED, tokens, priceFeeds, users.admin);
+        oracle =
+            new ChainlinkPriceOracle(ARBITRUM_SEQUENCER_UPTIME_FEED, PYUSD_PRICE_FEED, tokens, priceFeeds, users.admin);
     }
 
     function test__Price_WETH_ARBITRUM() public view {

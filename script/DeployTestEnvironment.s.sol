@@ -17,7 +17,8 @@ contract DeployTestEnvironment is Deployer {
     function run(
         address baseToken,
         address swapRouter,
-        address mNavPriceFeed,
+        address sequencerUptimeFeed,
+        address baseTokenPriceFeed,
         address loanRouter,
         address[] calldata tokens,
         address[] calldata priceFeeds
@@ -27,7 +28,8 @@ contract DeployTestEnvironment is Deployer {
         console.log("UniswapV3SwapAdapter", address(swapAdapter));
 
         // Deploy ChainlinkPriceOracle
-        ChainlinkPriceOracle priceOracle = new ChainlinkPriceOracle(mNavPriceFeed, tokens, priceFeeds, msg.sender);
+        ChainlinkPriceOracle priceOracle =
+            new ChainlinkPriceOracle(sequencerUptimeFeed, baseTokenPriceFeed, tokens, priceFeeds, msg.sender);
         console.log("ChainlinkPriceOracle", address(priceOracle));
 
         // Deploy USDai implemetation

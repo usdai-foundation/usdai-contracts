@@ -88,6 +88,9 @@ abstract contract BaseTest is Test {
     /* USDC price feed */
     address internal constant USDC_PRICE_FEED = 0x50834F3163758fcC1Df9973b6e91f0F0F0434aD3;
 
+    /* L2 sequencer uptime feed (Arbitrum) */
+    address internal constant SEQUENCER_UPTIME_FEED = 0xFdB631F5EE196F0ed6FAa767959853A9F217697D;
+
     /* English auction liquidator */
     address internal constant ENGLISH_AUCTION_LIQUIDATOR = 0xceb5856C525bbb654EEA75A8852A0F51073C4a58;
 
@@ -363,7 +366,9 @@ abstract contract BaseTest is Test {
         priceFeeds[0] = address(WETH_PRICE_FEED);
         priceFeeds[1] = address(USDT_PRICE_FEED);
         priceFeeds[2] = address(USDC_PRICE_FEED);
-        priceOracle = new ChainlinkPriceOracle(address(testPYUSDPriceFeed), tokens, priceFeeds, users.admin);
+        priceOracle = new ChainlinkPriceOracle(
+            SEQUENCER_UPTIME_FEED, address(testPYUSDPriceFeed), tokens, priceFeeds, users.admin
+        );
 
         vm.stopPrank();
     }

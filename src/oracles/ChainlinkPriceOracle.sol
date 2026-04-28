@@ -22,7 +22,7 @@ contract ChainlinkPriceOracle is IPriceOracle, AccessControl {
     /**
      * @notice Implementation version
      */
-    string public constant IMPLEMENTATION_VERSION = "1.1";
+    string public constant IMPLEMENTATION_VERSION = "1.2";
 
     /**
      * @notice Implementation name
@@ -39,6 +39,11 @@ contract ChainlinkPriceOracle is IPriceOracle, AccessControl {
      */
     int256 internal constant USDAI_SCALING_FACTOR = int256(10 ** USDAI_DECIMALS);
 
+    /**
+     * @notice L2 sequencer uptime feed grace period
+     */
+    uint256 internal constant GRACE_PERIOD_TIME = 3600;
+
     /*------------------------------------------------------------------------*/
     /* Errors */
     /*------------------------------------------------------------------------*/
@@ -47,6 +52,16 @@ contract ChainlinkPriceOracle is IPriceOracle, AccessControl {
      * @notice Invalid decimals
      */
     error InvalidDecimals();
+
+    /**
+     * @notice L2 sequencer is down
+     */
+    error SequencerDown();
+
+    /**
+     * @notice L2 sequencer grace period not over
+     */
+    error GracePeriodNotOver();
 
     /*------------------------------------------------------------------------*/
     /* Events */
@@ -93,6 +108,11 @@ contract ChainlinkPriceOracle is IPriceOracle, AccessControl {
      */
     uint8 internal immutable _pyusdDecimals;
 
+    /**
+     * @notice L2 sequencer uptime feed
+     */
+    AggregatorV3Interface internal immutable _sequencerUptimeFeed;
+
     /*------------------------------------------------------------------------*/
     /* State */
     /*------------------------------------------------------------------------*/
@@ -113,16 +133,26 @@ contract ChainlinkPriceOracle is IPriceOracle, AccessControl {
 
     /**
      * @notice Chainlink Price Oracle constructor
+     * @param sequencerUptimeFeed_ L2 sequencer uptime feed
      * @param pyusdPriceFeed_ PYUSD price feed
      * @param tokens_ Tokens
      * @param priceFeeds_ Price feeds
      * @param admin Default admin address
      */
-    constructor(address pyusdPriceFeed_, address[] memory tokens_, address[] memory priceFeeds_, address admin) {
+    constructor(
+        address sequencerUptimeFeed_,
+        address pyusdPriceFeed_,
+        address[] memory tokens_,
+        address[] memory priceFeeds_,
+        address admin
+    ) {
         /* Validate price feeds */
-        if (pyusdPriceFeed_ == address(0)) {
+        if (sequencerUptimeFeed_ == address(0) || pyusdPriceFeed_ == address(0)) {
             revert InvalidAddress();
         }
+
+        /* Set L2 sequencer uptime feed */
+        _sequencerUptimeFeed = AggregatorV3Interface(sequencerUptimeFeed_);
 
         /* Set PYUSD price feed */
         _pyusdPriceFeed = AggregatorV3Interface(pyusdPriceFeed_);
@@ -150,6 +180,14 @@ contract ChainlinkPriceOracle is IPriceOracle, AccessControl {
      */
     function pyusdPriceFeed() external view returns (address) {
         return address(_pyusdPriceFeed);
+    }
+
+    /**
+     * @notice Get address of L2 sequencer uptime feed
+     * @return L2 sequencer uptime feed
+     */
+    function sequencerUptimeFeed() external view returns (address) {
+        return address(_sequencerUptimeFeed);
     }
 
     /**
@@ -250,6 +288,19 @@ contract ChainlinkPriceOracle is IPriceOracle, AccessControl {
     }
 
     /**
+     * @notice Validate L2 sequencer is up and grace period has elapsed
+     */
+    function _validateSequencer() internal view {
+        (, int256 answer, uint256 startedAt,,) = _sequencerUptimeFeed.latestRoundData();
+
+        /* 0 when sequencer is up, 1 when down */
+        if (answer != 0) revert SequencerDown();
+
+        /* Reject prices reported within the grace period after sequencer recovery */
+        if (block.timestamp - startedAt <= GRACE_PERIOD_TIME) revert GracePeriodNotOver();
+    }
+
+    /**
      * @notice Get derived price
      * @param token_ Token
      * @return Derived price
@@ -257,16 +308,21 @@ contract ChainlinkPriceOracle is IPriceOracle, AccessControl {
     function _getDerivedPrice(
         address token_
     ) internal view returns (int256) {
+        /* Validate L2 sequencer */
+        _validateSequencer();
+
         /* Get token price feed */
         AggregatorV3Interface tokenPriceFeed = _priceFeeds[token_];
 
         /* Get token price */
         (, int256 tokenPrice,,,) = tokenPriceFeed.latestRoundData();
+
         uint8 tokenDecimals = tokenPriceFeed.decimals();
         tokenPrice = _scalePrice(tokenPrice, tokenDecimals);
 
         /* Get PYUSD price */
         (, int256 pyusdPrice,,,) = _pyusdPriceFeed.latestRoundData();
+
         pyusdPrice = _scalePrice(pyusdPrice, _pyusdDecimals);
 
         return (tokenPrice * USDAI_SCALING_FACTOR) / pyusdPrice;

@@ -65,7 +65,7 @@ abstract contract BaseLoanRouterTest is BaseTest {
     /* Setup */
     /*------------------------------------------------------------------------*/
 
-    function setUp() public override {
+    function setUp() public virtual override {
         super.setUp();
 
         // Deploy test NFT
