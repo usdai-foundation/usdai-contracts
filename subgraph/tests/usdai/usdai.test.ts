@@ -1,6 +1,6 @@
 import { BigInt, Bytes } from "@graphprotocol/graph-ts";
 import { assert, beforeEach, clearStore, describe, test } from "matchstick-as";
-import { USDaiMonthData, USDaiStats } from "../../generated/schema";
+import { USDaiDayData, USDaiStats } from "../../generated/schema";
 import { handleTransfer } from "../../src/usdai";
 import { ALICE, BOB, CHARLIE, createTransferEvent, TestTimestamps, TransferAmounts } from "./utils";
 
@@ -84,123 +84,126 @@ describe("USDaiStats", () => {
   });
 });
 
-describe("USDaiMonthData", () => {
+describe("USDaiDayData", () => {
   beforeEach(() => {
     clearStore();
   });
 
-  test("Month ID format is YYYY-MM with leading zeros", () => {
+  test("Day ID format is YYYY-MM-DD with leading zeros", () => {
     const event = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_START);
 
     handleTransfer(event);
 
-    const monthId = Bytes.fromUTF8("2024-01");
-    const monthData = USDaiMonthData.load(monthId);
-    assert.assertNotNull(monthData);
+    const dayId = Bytes.fromUTF8("2024-01-01");
+    const dayData = USDaiDayData.load(dayId);
+    assert.assertNotNull(dayData);
   });
 
-  test("Correct year/month/timestamp fields set", () => {
+  test("Correct date/timestamp fields set", () => {
     const event = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_START);
 
     handleTransfer(event);
 
-    const monthId = Bytes.fromUTF8("2024-01");
-    const monthData = USDaiMonthData.load(monthId);
-    assert.assertNotNull(monthData);
-    assert.i32Equals(2024, monthData!.year);
-    assert.i32Equals(1, monthData!.month);
-    // January 2024 start timestamp
-    assert.bigIntEquals(BigInt.fromI32(1704067200), monthData!.timestamp);
+    const dayId = Bytes.fromUTF8("2024-01-01");
+    const dayData = USDaiDayData.load(dayId);
+    assert.assertNotNull(dayData);
+    assert.stringEquals("2024-01-01", dayData!.date);
+    assert.bigIntEquals(BigInt.fromI32(1704067200), dayData!.timestamp);
   });
 
-  test("Same-month transfers aggregate to single entity", () => {
+  test("Same-day transfers aggregate to single entity", () => {
     const event1 = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_START);
-    const event2 = createTransferEvent(BOB, CHARLIE, TransferAmounts.ONE_THOUSAND, TestTimestamps.JAN_2024_MID);
-    const event3 = createTransferEvent(CHARLIE, ALICE, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_END);
+    const event2 = createTransferEvent(BOB, CHARLIE, TransferAmounts.ONE_THOUSAND, TestTimestamps.JAN_2024_START);
+    const event3 = createTransferEvent(CHARLIE, ALICE, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_START);
 
     handleTransfer(event1);
     handleTransfer(event2);
     handleTransfer(event3);
 
-    const monthId = Bytes.fromUTF8("2024-01");
-    const monthData = USDaiMonthData.load(monthId);
-    assert.assertNotNull(monthData);
+    const dayId = Bytes.fromUTF8("2024-01-01");
+    const dayData = USDaiDayData.load(dayId);
+    assert.assertNotNull(dayData);
 
     const expectedVolume = TransferAmounts.ONE_HUNDRED.plus(TransferAmounts.ONE_THOUSAND).plus(
       TransferAmounts.ONE_HUNDRED,
     );
-    assert.bigIntEquals(expectedVolume, monthData!.volume);
-    assert.bigIntEquals(BigInt.fromI32(3), monthData!.transferCount);
+    assert.bigIntEquals(expectedVolume, dayData!.volume);
+    assert.bigIntEquals(BigInt.fromI32(3), dayData!.transferCount);
   });
 
-  test("Different months create separate entities", () => {
-    const janEvent = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_START);
-    const febEvent = createTransferEvent(BOB, CHARLIE, TransferAmounts.ONE_THOUSAND, TestTimestamps.FEB_2024_START);
+  test("Different days create separate entities", () => {
+    const jan15Event = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_MID);
+    const jan16Event = createTransferEvent(BOB, CHARLIE, TransferAmounts.ONE_THOUSAND, TestTimestamps.JAN_2024_END);
 
-    handleTransfer(janEvent);
-    handleTransfer(febEvent);
+    handleTransfer(jan15Event);
+    handleTransfer(jan16Event);
 
-    const janMonthId = Bytes.fromUTF8("2024-01");
-    const febMonthId = Bytes.fromUTF8("2024-02");
+    const jan15DayId = Bytes.fromUTF8("2024-01-15");
+    const jan31DayId = Bytes.fromUTF8("2024-01-31");
 
-    const janData = USDaiMonthData.load(janMonthId);
-    const febData = USDaiMonthData.load(febMonthId);
+    const jan15Data = USDaiDayData.load(jan15DayId);
+    const jan31Data = USDaiDayData.load(jan31DayId);
 
-    assert.assertNotNull(janData);
-    assert.assertNotNull(febData);
+    assert.assertNotNull(jan15Data);
+    assert.assertNotNull(jan31Data);
 
-    assert.bigIntEquals(TransferAmounts.ONE_HUNDRED, janData!.volume);
-    assert.bigIntEquals(TransferAmounts.ONE_THOUSAND, febData!.volume);
+    assert.bigIntEquals(TransferAmounts.ONE_HUNDRED, jan15Data!.volume);
+    assert.bigIntEquals(TransferAmounts.ONE_THOUSAND, jan31Data!.volume);
 
-    assert.i32Equals(1, janData!.month);
-    assert.i32Equals(2, febData!.month);
+    assert.stringEquals("2024-01-15", jan15Data!.date);
+    assert.stringEquals("2024-01-31", jan31Data!.date);
   });
 
-  test("Year boundary creates separate entities", () => {
-    const dec2024Event = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.DEC_2024_END);
-    const jan2025Event = createTransferEvent(BOB, CHARLIE, TransferAmounts.ONE_THOUSAND, TestTimestamps.JAN_2025_START);
+  test("Day boundary creates separate entities", () => {
+    const jan31Event = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_END);
+    const feb1Event = createTransferEvent(BOB, CHARLIE, TransferAmounts.ONE_THOUSAND, TestTimestamps.FEB_2024_START);
 
-    handleTransfer(dec2024Event);
-    handleTransfer(jan2025Event);
+    handleTransfer(jan31Event);
+    handleTransfer(feb1Event);
 
-    const dec2024Id = Bytes.fromUTF8("2024-12");
-    const jan2025Id = Bytes.fromUTF8("2025-01");
+    const jan31Id = Bytes.fromUTF8("2024-01-31");
+    const feb1Id = Bytes.fromUTF8("2024-02-01");
 
-    const dec2024Data = USDaiMonthData.load(dec2024Id);
-    const jan2025Data = USDaiMonthData.load(jan2025Id);
+    const jan31Data = USDaiDayData.load(jan31Id);
+    const feb1Data = USDaiDayData.load(feb1Id);
 
-    assert.assertNotNull(dec2024Data);
-    assert.assertNotNull(jan2025Data);
+    assert.assertNotNull(jan31Data);
+    assert.assertNotNull(feb1Data);
 
-    assert.i32Equals(2024, dec2024Data!.year);
-    assert.i32Equals(12, dec2024Data!.month);
-
-    assert.i32Equals(2025, jan2025Data!.year);
-    assert.i32Equals(1, jan2025Data!.month);
+    assert.stringEquals("2024-01-31", jan31Data!.date);
+    assert.stringEquals("2024-02-01", feb1Data!.date);
   });
 
-  test("Leap year February handled correctly", () => {
+  test("Leap year February 29 handled correctly", () => {
     const leapDayEvent = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.FEB_2024_LEAP_DAY);
 
     handleTransfer(leapDayEvent);
 
-    const febMonthId = Bytes.fromUTF8("2024-02");
-    const febData = USDaiMonthData.load(febMonthId);
+    const febDayId = Bytes.fromUTF8("2024-02-29");
+    const febData = USDaiDayData.load(febDayId);
 
     assert.assertNotNull(febData);
-    assert.i32Equals(2024, febData!.year);
-    assert.i32Equals(2, febData!.month);
+    assert.stringEquals("2024-02-29", febData!.date);
   });
 
-  test("Double-digit months work correctly", () => {
-    const event = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.DEC_2024_END);
+  test("Year boundary creates separate entities", () => {
+    const dec31Event = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.DEC_2024_END);
+    const jan1Event = createTransferEvent(BOB, CHARLIE, TransferAmounts.ONE_THOUSAND, TestTimestamps.JAN_2025_START);
 
-    handleTransfer(event);
+    handleTransfer(dec31Event);
+    handleTransfer(jan1Event);
 
-    const monthId = Bytes.fromUTF8("2024-12");
-    const monthData = USDaiMonthData.load(monthId);
-    assert.assertNotNull(monthData);
-    assert.i32Equals(12, monthData!.month);
+    const dec31Id = Bytes.fromUTF8("2024-12-31");
+    const jan1Id = Bytes.fromUTF8("2025-01-01");
+
+    const dec31Data = USDaiDayData.load(dec31Id);
+    const jan1Data = USDaiDayData.load(jan1Id);
+
+    assert.assertNotNull(dec31Data);
+    assert.assertNotNull(jan1Data);
+
+    assert.stringEquals("2024-12-31", dec31Data!.date);
+    assert.stringEquals("2025-01-01", jan1Data!.date);
   });
 });
 
@@ -209,47 +212,45 @@ describe("Integration Tests", () => {
     clearStore();
   });
 
-  test("Total stats volume equals sum of monthly volumes", () => {
-    const janEvent = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_START);
-    const febEvent = createTransferEvent(BOB, CHARLIE, TransferAmounts.ONE_THOUSAND, TestTimestamps.FEB_2024_START);
-    const marEvent = createTransferEvent(CHARLIE, ALICE, TransferAmounts.ONE_MILLION, TestTimestamps.MAR_2024_START);
+  test("Total stats volume equals sum of daily volumes", () => {
+    const jan1Event = createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_START);
+    const jan15Event = createTransferEvent(BOB, CHARLIE, TransferAmounts.ONE_THOUSAND, TestTimestamps.JAN_2024_MID);
+    const jan31Event = createTransferEvent(CHARLIE, ALICE, TransferAmounts.ONE_MILLION, TestTimestamps.JAN_2024_END);
 
-    handleTransfer(janEvent);
-    handleTransfer(febEvent);
-    handleTransfer(marEvent);
+    handleTransfer(jan1Event);
+    handleTransfer(jan15Event);
+    handleTransfer(jan31Event);
 
     const stats = USDaiStats.load(STATS_ID);
-    const janData = USDaiMonthData.load(Bytes.fromUTF8("2024-01"));
-    const febData = USDaiMonthData.load(Bytes.fromUTF8("2024-02"));
-    const marData = USDaiMonthData.load(Bytes.fromUTF8("2024-03"));
+    const jan1Data = USDaiDayData.load(Bytes.fromUTF8("2024-01-01"));
+    const jan15Data = USDaiDayData.load(Bytes.fromUTF8("2024-01-15"));
+    const jan31Data = USDaiDayData.load(Bytes.fromUTF8("2024-01-31"));
 
     assert.assertNotNull(stats);
-    assert.assertNotNull(janData);
-    assert.assertNotNull(febData);
-    assert.assertNotNull(marData);
+    assert.assertNotNull(jan1Data);
+    assert.assertNotNull(jan15Data);
+    assert.assertNotNull(jan31Data);
 
-    const monthlySum = janData!.volume.plus(febData!.volume).plus(marData!.volume);
-    assert.bigIntEquals(stats!.totalVolume, monthlySum);
+    const dailySum = jan1Data!.volume.plus(jan15Data!.volume).plus(jan31Data!.volume);
+    assert.bigIntEquals(stats!.totalVolume, dailySum);
   });
 
-  test("Total transfer count equals sum of monthly counts", () => {
-    // 2 transfers in January
+  test("Total transfer count equals sum of daily counts", () => {
     handleTransfer(createTransferEvent(ALICE, BOB, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_START));
-    handleTransfer(createTransferEvent(BOB, CHARLIE, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_MID));
+    handleTransfer(createTransferEvent(BOB, CHARLIE, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_START));
 
-    // 1 transfer in February
-    handleTransfer(createTransferEvent(CHARLIE, ALICE, TransferAmounts.ONE_HUNDRED, TestTimestamps.FEB_2024_START));
+    handleTransfer(createTransferEvent(CHARLIE, ALICE, TransferAmounts.ONE_HUNDRED, TestTimestamps.JAN_2024_MID));
 
     const stats = USDaiStats.load(STATS_ID);
-    const janData = USDaiMonthData.load(Bytes.fromUTF8("2024-01"));
-    const febData = USDaiMonthData.load(Bytes.fromUTF8("2024-02"));
+    const jan1Data = USDaiDayData.load(Bytes.fromUTF8("2024-01-01"));
+    const jan15Data = USDaiDayData.load(Bytes.fromUTF8("2024-01-15"));
 
     assert.assertNotNull(stats);
-    assert.assertNotNull(janData);
-    assert.assertNotNull(febData);
+    assert.assertNotNull(jan1Data);
+    assert.assertNotNull(jan15Data);
 
-    const monthlyCountSum = janData!.transferCount.plus(febData!.transferCount);
-    assert.bigIntEquals(stats!.transferCount, monthlyCountSum);
+    const dailyCountSum = jan1Data!.transferCount.plus(jan15Data!.transferCount);
+    assert.bigIntEquals(stats!.transferCount, dailyCountSum);
     assert.bigIntEquals(BigInt.fromI32(3), stats!.transferCount);
   });
 });

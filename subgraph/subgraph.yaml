@@ -38,7 +38,6 @@ dataSources:
       language: wasm/assemblyscript
       entities:
         - USDaiStats
-        - USDaiMonthData
       abis:
         - name: USDai
           file: ../out/USDai.sol/USDai.json
@@ -46,3 +45,30 @@ dataSources:
         - event: Transfer(indexed address,indexed address,uint256)
           handler: handleTransfer
       file: ./src/usdai.ts
+  - kind: ethereum
+    name: sUSDai
+    network: sepolia
+    source:
+      abi: StakedUSDai
+      address: "0x1897bc1717d4ad5abcfa2ee47edb3265e9f4fd7c"
+      startBlock: 8277640
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities:
+        - RedemptionRequest
+        - RedemptionProcessed
+        - RedemptionSharePriceSnapshot
+        - SUSDaiStats
+      abis:
+        - name: StakedUSDai
+          file: ../out/StakedUSDai.sol/StakedUSDai.json
+      eventHandlers:
+        - event: RedeemRequest(indexed address,indexed address,indexed uint256,address,uint256)
+          handler: handleRedeemRequest
+        - event: RedemptionProcessed(indexed uint256,indexed address,uint256,uint256,uint256)
+          handler: handleRedemptionProcessed
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleSUSDaiTransfer
+      file: ./src/staked-usdai.ts

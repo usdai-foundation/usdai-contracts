@@ -16,11 +16,73 @@ type USDaiStats @entity(immutable: false) {
   transferCount: BigInt!
 }
 
-type USDaiMonthData @entity(immutable: false) {
-  id: Bytes! # Year-month encoded (e.g., "2026-01")
-  year: Int! # Year (e.g., 2026)
-  month: Int! # Month (1-12)
-  timestamp: BigInt! # Start of month timestamp (for sorting/filtering)
-  volume: BigInt! # Total transfer volume for this month
-  transferCount: BigInt! # Number of transfers
+type USDaiDayData @entity(immutable: false) {
+  id: Bytes!               # day as bytes (e.g. Bytes.fromUTF8("2026-01-15"))
+  date: String!            # ISO YYYY-MM-DD (e.g. "2026-01-15")
+  timestamp: BigInt!       # Start-of-day Unix timestamp (UTC)
+  volume: BigInt!
+  transferCount: BigInt!
+}
+
+type RedemptionRequest @entity(immutable: true) {
+  id: Bytes!                      # txHash.concatI32(logIndex)
+  redemptionId: BigInt!           # requestId from event
+  controller: Bytes!
+  owner: Bytes!
+  sender: Bytes!
+  shares: BigInt!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RedemptionProcessed @entity(immutable: true) {
+  id: Bytes!                      # txHash.concatI32(logIndex)
+  redemptionId: BigInt!
+  controller: Bytes!
+  fulfilledShares: BigInt!
+  amount: BigInt!                 # USDai assets fulfilled
+  pendingShares: BigInt!          # remaining after this event
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type RedemptionSharePriceSnapshot @entity(immutable: true) {
+  id: Bytes!                      # txHash.concatI32(logIndex)
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  redemptionSharePrice: BigInt!   # 1e18-scaled, captured via eth_call inside the mapping
+}
+
+type Redemption @entity(immutable: false) {
+  id: Bytes!                      # redemptionId encoded as bytes (Bytes.fromBigInt or equivalent)
+  redemptionId: BigInt!
+  controller: Bytes!
+  owner: Bytes!
+  sender: Bytes!
+  requestedShares: BigInt!        # original RedeemRequest.shares
+  pendingShares: BigInt!          # decreases on each RedemptionProcessed; 0 when fully fulfilled
+  fulfilledShares: BigInt!        # cumulative
+  fulfilledAmount: BigInt!        # cumulative USDai paid out
+  active: Boolean!                # pendingShares > 0
+  requestedAtBlock: BigInt!
+  requestedAtTimestamp: BigInt!
+  lastUpdatedBlock: BigInt!
+  lastUpdatedTimestamp: BigInt!
+  requestTxHash: Bytes!
+}
+
+type SUSDaiStats @entity(immutable: false) {
+  id: Bytes!
+  totalVolume: BigInt!     # Cumulative transfer amount
+  transferCount: BigInt!
+}
+
+type SUSDaiDayData @entity(immutable: false) {
+  id: Bytes!               # day as bytes (e.g. Bytes.fromUTF8("2026-01-15"))
+  date: String!            # ISO YYYY-MM-DD (e.g. "2026-01-15")
+  timestamp: BigInt!       # Start-of-day Unix timestamp (UTC)
+  volume: BigInt!
+  transferCount: BigInt!
 }
