@@ -19,7 +19,7 @@ contract DeployTestEnvironment is Deployer {
         address swapRouter,
         address sequencerUptimeFeed,
         address baseTokenPriceFeed,
-        address loanRouter,
+        address loanRouterV2,
         address[] calldata tokens,
         address[] calldata priceFeeds
     ) public broadcast useDeployment returns (address, address, address, address) {
@@ -48,7 +48,7 @@ contract DeployTestEnvironment is Deployer {
         StakedUSDai stakedUSDaiImpl = new StakedUSDai(
             address(USDai_),
             address(priceOracle),
-            loanRouter,
+            loanRouterV2,
             msg.sender,
             uint64(block.timestamp),
             100,

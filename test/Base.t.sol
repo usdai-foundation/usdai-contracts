@@ -15,9 +15,13 @@ import {TestERC20} from "./tokens/TestERC20.sol";
 
 import {UniswapPoolHelpers} from "./helpers/UniswapPoolHelpers.sol";
 
-import {LoanRouter} from "@usdai-loan-router-contracts/LoanRouter.sol";
-import {DepositTimelock} from "@usdai-loan-router-contracts/DepositTimelock.sol";
-import {BundleCollateralWrapper} from "@usdai-loan-router-contracts/collateralWrappers/BundleCollateralWrapper.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+
+import {ICollateralTimelock} from "@usdai-loan-router-contracts/interfaces/ICollateralTimelock.sol";
+import {IDepositTimelock} from "@usdai-loan-router-contracts/interfaces/IDepositTimelock.sol";
+import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
+
+import {MockEscrowTimelock} from "./mocks/MockEscrowTimelock.sol";
 
 import {USDai} from "src/USDai.sol";
 import {StakedUSDai} from "src/StakedUSDai.sol";
@@ -108,14 +112,21 @@ abstract contract BaseTest is Test {
         address payable mockOAdapter;
     }
 
+    /* Mirror of a .bytecode.linkReferences entry. Fields ordered alphabetically for JSON decoding. */
+    struct LinkReference {
+        uint256 length;
+        uint256 start;
+    }
+
     Users internal users;
     TestERC20 internal usd;
     TestERC20 internal usd2;
     TestERC721 internal nft;
     UniswapV3SwapAdapter internal uniswapV3SwapAdapter;
-    BundleCollateralWrapper internal bundleCollateralWrapper;
-    DepositTimelock internal depositTimelock;
-    LoanRouter internal loanRouter;
+    ICollateralTimelock internal collateralTimelock;
+    IDepositTimelock internal depositTimelock;
+    MockEscrowTimelock internal escrowTimelock;
+    ILoanRouterV2 internal loanRouter;
     BaseYieldEscrow internal baseYieldEscrow;
     ChainlinkPriceOracle internal priceOracle;
     IUSDai internal usdai;
@@ -145,17 +156,23 @@ abstract contract BaseTest is Test {
         deployUsd();
         deployUsdPool();
 
-        deployDepositTimelock();
-        deployBundleCollateralWrapper();
-        deployLoanRouter();
+        deployEscrowTimelock();
 
         deployBaseYieldEscrow();
         deployUniswapV3SwapAdapter();
         deployTestPYUSDPriceFeed();
         deployPriceOracle();
         deployUsdai();
+
+        deployCollateralTimelock();
+        deployDepositTimelock();
+        deployLoanRouter();
+
         deployStakedUsdai();
         upgradeUsdai();
+
+        grantDepositTimelockRoles();
+        grantCollateralTimelockRoles();
 
         setupPyusdLiquidity();
 
@@ -412,51 +429,200 @@ abstract contract BaseTest is Test {
         vm.stopPrank();
     }
 
-    function deployBundleCollateralWrapper() internal {
+    function deployEscrowTimelock() internal {
         vm.startPrank(users.deployer);
-        bundleCollateralWrapper = new BundleCollateralWrapper();
+        escrowTimelock = new MockEscrowTimelock();
+        vm.stopPrank();
+    }
+
+    function deployCollateralTimelock() internal {
+        string memory artifactPath = "externalOut/CollateralTimelock.sol/CollateralTimelock.json";
+
+        string memory json;
+        try vm.readFile(artifactPath) returns (string memory content) {
+            json = content;
+        } catch {
+            revert(
+                "CollateralTimelock artifact not found in externalOut/. Run: FOUNDRY_OUT=$(pwd)/externalOut forge build --root lib/usdai-loan-router-contracts"
+            );
+        }
+
+        bytes memory initCode = abi.encodePacked(vm.parseJsonBytes(json, ".bytecode.object"));
+
+        vm.startPrank(users.deployer);
+
+        address impl;
+        assembly {
+            impl := create(0, add(initCode, 0x20), mload(initCode))
+        }
+        require(impl != address(0), "CollateralTimelock implementation deployment failed");
+
+        collateralTimelock = ICollateralTimelock(
+            address(new ERC1967Proxy(impl, abi.encodeWithSignature("initialize(address)", users.admin)))
+        );
+
         vm.stopPrank();
     }
 
     function deployDepositTimelock() internal {
+        string memory artifactPath = "externalOut/DepositTimelock.sol/DepositTimelock.json";
+
+        string memory json;
+        try vm.readFile(artifactPath) returns (string memory content) {
+            json = content;
+        } catch {
+            revert(
+                "DepositTimelock artifact not found in externalOut/. Run: FOUNDRY_OUT=$(pwd)/externalOut forge build --root lib/usdai-loan-router-contracts"
+            );
+        }
+
+        bytes memory initCode =
+            abi.encodePacked(vm.parseJsonBytes(json, ".bytecode.object"), abi.encode(address(usdai)));
+
         vm.startPrank(users.deployer);
 
-        // Deploy implementation
-        DepositTimelock depositTimelockImpl = new DepositTimelock();
+        address impl;
+        assembly {
+            impl := create(0, add(initCode, 0x20), mload(initCode))
+        }
+        require(impl != address(0), "DepositTimelock implementation deployment failed");
 
-        // Deploy proxy
-        TransparentUpgradeableProxy depositTimelockProxy = new TransparentUpgradeableProxy(
-            address(depositTimelockImpl),
-            address(users.admin),
-            abi.encodeWithSignature("initialize(address)", users.deployer)
+        depositTimelock = IDepositTimelock(
+            address(new ERC1967Proxy(impl, abi.encodeWithSignature("initialize(address)", users.admin)))
         );
-
-        // Create interface
-        depositTimelock = DepositTimelock(address(depositTimelockProxy));
 
         vm.stopPrank();
     }
 
+    function grantDepositTimelockRoles() internal {
+        vm.prank(users.admin);
+        AccessControl(address(depositTimelock)).grantRole(keccak256("DEPOSITOR_ROLE"), address(stakedUsdai));
+    }
+
+    function grantCollateralTimelockRoles() internal {
+        vm.prank(users.admin);
+        AccessControl(address(collateralTimelock)).grantRole(keccak256("DEPOSITOR_ROLE"), address(users.borrower));
+    }
+
     function deployLoanRouter() internal {
-        vm.startPrank(users.deployer);
+        /* Read artifacts — existence check on the primary artifact */
+        string memory routerJson;
+        try vm.readFile("externalOut/LoanRouterV2.sol/LoanRouterV2.json") returns (string memory content) {
+            routerJson = content;
+        } catch {
+            revert(
+                "LoanRouterV2 artifact not found in externalOut/. Run: FOUNDRY_OUT=$(pwd)/externalOut forge build --root lib/usdai-loan-router-contracts"
+            );
+        }
 
-        // Deploy implementation
-        LoanRouter loanRouterImpl =
-            new LoanRouter(address(depositTimelock), ENGLISH_AUCTION_LIQUIDATOR, address(bundleCollateralWrapper));
+        /* Deploy ScheduleLogic (no link references) */
+        address scheduleLogicLib = _deployFromHex(
+            vm.parseJsonString(vm.readFile("externalOut/ScheduleLogic.sol/ScheduleLogic.json"), ".bytecode.object"), ""
+        );
 
-        // Deploy proxy
-        TransparentUpgradeableProxy loanRouterProxy = new TransparentUpgradeableProxy(
-            address(loanRouterImpl),
-            address(users.admin),
-            abi.encodeWithSignature(
-                "initialize(address,address,uint256)", users.deployer, users.feeRecipient, LOAN_ROUTER_ADMIN_FEE_RATE
+        /* Deploy LoanLogicV2 (links: ScheduleLogic) */
+        string memory loanLogicJson = vm.readFile("externalOut/LoanLogicV2.sol/LoanLogicV2.json");
+        bytes memory llHex = bytes(vm.parseJsonString(loanLogicJson, ".bytecode.object"));
+        _linkLibrary(llHex, loanLogicJson, "src/ScheduleLogic.sol", "ScheduleLogic", scheduleLogicLib);
+        address loanLogicLib = _deployFromHex(string(llHex), "");
+
+        /* Deploy MigrationLogic (links: LoanLogicV2) */
+        string memory migrationJson = vm.readFile("externalOut/MigrationLogic.sol/MigrationLogic.json");
+        bytes memory mlHex = bytes(vm.parseJsonString(migrationJson, ".bytecode.object"));
+        _linkLibrary(mlHex, migrationJson, "src/LoanLogicV2.sol", "LoanLogicV2", loanLogicLib);
+        address migrationLogicLib = _deployFromHex(string(mlHex), "");
+
+        /* Link and deploy LoanRouterV2 implementation */
+        bytes memory lrHex = bytes(vm.parseJsonString(routerJson, ".bytecode.object"));
+        _linkLibrary(lrHex, routerJson, "src/LoanLogicV2.sol", "LoanLogicV2", loanLogicLib);
+        _linkLibrary(lrHex, routerJson, "src/MigrationLogic.sol", "MigrationLogic", migrationLogicLib);
+        _linkLibrary(lrHex, routerJson, "src/ScheduleLogic.sol", "ScheduleLogic", scheduleLogicLib);
+
+        /* Constructor args: (feeRecipient_, collateralTimelock_, depositTimelock_, escrowTimelock_, loanRouterV1_) */
+        address impl = _deployFromHex(
+            string(lrHex),
+            abi.encode(
+                users.feeRecipient,
+                address(collateralTimelock),
+                address(depositTimelock),
+                address(escrowTimelock),
+                address(0)
             )
         );
 
-        // Create interface
-        loanRouter = LoanRouter(address(loanRouterProxy));
+        vm.startPrank(users.deployer);
+
+        loanRouter =
+            ILoanRouterV2(address(new ERC1967Proxy(impl, abi.encodeWithSignature("initialize(address)", users.admin))));
 
         vm.stopPrank();
+    }
+
+    /**
+     * @notice Decode a hex string and deploy it with optional constructor args appended.
+     */
+    function _deployFromHex(string memory hexStr, bytes memory constructorArgs) internal returns (address addr) {
+        bytes memory code = abi.encodePacked(_fromHex(bytes(hexStr)), constructorArgs);
+        assembly {
+            addr := create(0, add(code, 0x20), mload(code))
+        }
+        require(addr != address(0), "deployment failed");
+    }
+
+    /**
+     * @notice Link every placeholder for `contractName` defined in `sourcePath` by reading the
+     *         start offsets from the artifact's .bytecode.linkReferences and overwriting them with `lib`.
+     */
+    function _linkLibrary(
+        bytes memory hexStr,
+        string memory artifactJson,
+        string memory sourcePath,
+        string memory contractName,
+        address lib
+    ) internal pure {
+        string memory key = string.concat(".bytecode.linkReferences['", sourcePath, "']['", contractName, "']");
+        /* Forge decodes JSON object keys alphabetically, so fields must stay ordered length then start. */
+        LinkReference[] memory refs = abi.decode(vm.parseJson(artifactJson, key), (LinkReference[]));
+        for (uint256 i; i < refs.length; i++) {
+            _writeAddrHex(hexStr, refs[i].start, lib);
+        }
+    }
+
+    /**
+     * @notice Overwrite 40 hex chars in a bytecode hex string at byte offset `byteOffset`
+     *         with the lowercase hex of `lib`. Used to link library placeholders.
+     */
+    function _writeAddrHex(bytes memory hexStr, uint256 byteOffset, address lib) internal pure {
+        uint256 pos = 2 + byteOffset * 2; // skip leading "0x"
+        bytes20 a = bytes20(lib);
+        for (uint256 i; i < 20; i++) {
+            uint8 hi = uint8(a[i]) >> 4;
+            uint8 lo = uint8(a[i]) & 0xf;
+            hexStr[pos + i * 2] = bytes1(hi < 10 ? hi + 48 : hi + 87);
+            hexStr[pos + i * 2 + 1] = bytes1(lo < 10 ? lo + 48 : lo + 87);
+        }
+    }
+
+    /**
+     * @notice Decode a "0x..."-prefixed hex string to bytes.
+     */
+    function _fromHex(
+        bytes memory h
+    ) internal pure returns (bytes memory result) {
+        result = new bytes((h.length - 2) / 2);
+        for (uint256 i; i < result.length; i++) {
+            result[i] = bytes1((_hexNibble(h[2 + i * 2]) << 4) | _hexNibble(h[2 + i * 2 + 1]));
+        }
+    }
+
+    function _hexNibble(
+        bytes1 c
+    ) internal pure returns (uint8) {
+        uint8 v = uint8(c);
+        if (v >= 48 && v <= 57) return v - 48;
+        if (v >= 97 && v <= 102) return v - 87;
+        if (v >= 65 && v <= 70) return v - 55;
+        revert("_hexNibble: invalid char");
     }
 
     function fundUsers() internal {

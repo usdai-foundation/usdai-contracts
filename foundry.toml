@@ -7,7 +7,7 @@ via-ir = true
 optimizer = true
 optimizer_runs = 1
 evm_version = "cancun"
-fs_permissions = [{ access = "read-write", path = "./deployments/"}]
+fs_permissions = [{ access = "read-write", path = "./deployments/"}, { access = "read", path = "./externalOut/"}]
 block_gas_limit = 10000000000
 ignored_warnings_from = ["test"]
 

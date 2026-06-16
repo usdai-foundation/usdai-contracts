@@ -6,7 +6,7 @@ import {MockArbitrumSequencerUptimeFeed} from "../mocks/MockArbitrumSequencerUpt
 
 import {ChainlinkPriceOracle} from "src/oracles/ChainlinkPriceOracle.sol";
 
-import {ILoanRouter} from "@usdai-loan-router-contracts/interfaces/ILoanRouter.sol";
+import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
 
 /**
  * @title StakedUSDai sequencer downtime tests
@@ -49,13 +49,10 @@ contract StakedUSDaiSequencerDownTest is BaseLoanRouterTest {
         stakedUsdai.deposit(usdaiAmount / 2, users.normalUser1);
         vm.stopPrank();
 
-        /* Originate a USDC-denominated loan so USDC enters the position manager's
+        /* Register a USDC-denominated loan so USDC enters the position manager's
            currency tokens set. This is what makes priceOracle.price(USDC) reachable
            inside StakedUSDai._assets(). */
-        uint256 principal = 1_000_000 * 1e6;
-        uint256 depositAmount = (1_000_000 * 1e18 * 100015) / 100000;
-        ILoanRouter.LoanTerms memory loanTerms = _depositLoanTimelock(principal, depositAmount);
-        _borrowLoan(loanTerms);
+        _registerLoan(1_000_000 * 1e6);
 
         /* Install mock feed at the immutable sequencer feed address used by ChainlinkPriceOracle. */
         MockArbitrumSequencerUptimeFeed mockImpl = new MockArbitrumSequencerUptimeFeed();
@@ -71,25 +68,20 @@ contract StakedUSDaiSequencerDownTest is BaseLoanRouterTest {
     /* Helpers */
     /*------------------------------------------------------------------------*/
 
-    function _depositLoanTimelock(
-        uint256 principal,
-        uint256 depositAmount
-    ) internal returns (ILoanRouter.LoanTerms memory) {
-        ILoanRouter.LoanTerms memory loanTerms = createLoanTerms(principal);
-        bytes32 loanTermsHash = loanRouter.loanTermsHash(loanTerms);
-        vm.prank(users.manager);
-        stakedUsdai.depositLoanTimelock(loanTermsHash, depositAmount, uint64(block.timestamp + 7 days));
-        return loanTerms;
-    }
-
-    function _borrowLoan(
-        ILoanRouter.LoanTerms memory loanTerms
+    /**
+     * @notice Register a USDC-denominated loan in the LoanRouter position manager by
+     *         driving the V2 origination hook directly, pranking as the loan router.
+     *         This seeds USDC into the currency tokens set (and a pending balance) so
+     *         StakedUSDai._assets() reaches priceOracle.price(USDC) — and therefore
+     *         _validateSequencer — without exercising the full origination flow.
+     */
+    function _registerLoan(
+        uint256 principal
     ) internal {
-        ILoanRouter.LenderDepositInfo[] memory lenderDepositInfos = new ILoanRouter.LenderDepositInfo[](1);
-        lenderDepositInfos[0] =
-            ILoanRouter.LenderDepositInfo({depositType: ILoanRouter.DepositType.DepositTimelock, data: ""});
-        vm.prank(users.borrower);
-        loanRouter.borrow(loanTerms, lenderDepositInfos);
+        ILoanRouterV2.LoanTermsV2 memory loanTerms = createLoanTerms(principal);
+        bytes32 loanTermsHash = loanRouter.loanTermsHash(loanTerms);
+        vm.prank(address(loanRouter));
+        stakedUsdai.onLoanOriginated(loanTerms, loanTermsHash, 0);
     }
 
     function _setSequencerDown() internal {

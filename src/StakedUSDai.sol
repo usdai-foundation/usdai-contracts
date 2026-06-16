@@ -3,7 +3,6 @@ pragma solidity 0.8.29;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
@@ -14,6 +13,8 @@ import "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeabl
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+
+import "@usdai-loan-router-contracts/interfaces/ILoanRouterV2Hooks.sol";
 
 import "./StakedUSDaiStorage.sol";
 import "./RedemptionLogic.sol";
@@ -77,7 +78,7 @@ contract StakedUSDai is
      * @notice sUSDai Constructor
      * @param usdai_ USDai token
      * @param priceOracle_ Price oracle
-     * @param loanRouter_ Loan router
+     * @param loanRouterV2_ V2 loan router
      * @param adminFeeRecipient_ Admin fee recipient
      * @param genesisTimestamp_ Genesis timestamp
      * @param baseYieldAdminFeeRate_ Base yield admin fee rate
@@ -87,7 +88,7 @@ contract StakedUSDai is
     constructor(
         address usdai_,
         address priceOracle_,
-        address loanRouter_,
+        address loanRouterV2_,
         address adminFeeRecipient_,
         uint64 genesisTimestamp_,
         uint256 baseYieldAdminFeeRate_,
@@ -96,7 +97,7 @@ contract StakedUSDai is
     )
         StakedUSDaiStorage(usdai_, priceOracle_, adminFeeRecipient_, genesisTimestamp_, bridgeAdapter_)
         BasePositionManager(baseYieldAdminFeeRate_)
-        LoanRouterPositionManager(loanRouter_, loanRouterAdminFeeRate_)
+        LoanRouterPositionManager(loanRouterV2_, loanRouterAdminFeeRate_)
     {
         _disableInitializers();
     }
@@ -797,8 +798,7 @@ contract StakedUSDai is
         return interfaceId == type(IERC20).interfaceId || interfaceId == type(IERC4626).interfaceId
             || interfaceId == type(IERC7540Redeem).interfaceId || interfaceId == type(IERC7540Operator).interfaceId
             || interfaceId == type(IStakedUSDai).interfaceId || interfaceId == type(IMintableBurnable).interfaceId
-            || interfaceId == type(IERC7575).interfaceId || interfaceId == type(ILoanRouterHooks).interfaceId
-            || interfaceId == type(IERC721Receiver).interfaceId || interfaceId == type(IDepositTimelockHooks).interfaceId
-            || super.supportsInterface(interfaceId);
+            || interfaceId == type(IERC7575).interfaceId || interfaceId == type(ILoanRouterV2Hooks).interfaceId
+            || interfaceId == type(IERC721Receiver).interfaceId || super.supportsInterface(interfaceId);
     }
 }

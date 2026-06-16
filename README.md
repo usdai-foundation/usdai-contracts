@@ -17,6 +17,7 @@ $ forge build
 Test:
 
 ```shell
+$ FOUNDRY_OUT=$(pwd)/externalOut forge build --root lib/usdai-loan-router-contracts
 $ forge test
 ```
 

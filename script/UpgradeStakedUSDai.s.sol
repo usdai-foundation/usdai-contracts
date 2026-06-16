@@ -11,7 +11,7 @@ import {Deployer} from "./utils/Deployer.s.sol";
 
 contract UpgradeStakedUSDai is Deployer {
     function run(
-        address loanRouter,
+        address loanRouterV2,
         address adminFeeRecipient,
         uint256 baseYieldAdminFeeRate,
         uint256 loanRouterAdminFeeRate
@@ -20,7 +20,7 @@ contract UpgradeStakedUSDai is Deployer {
         StakedUSDai stakedUSDaiImpl = new StakedUSDai(
             _deployment.USDai,
             _deployment.priceOracle,
-            loanRouter,
+            loanRouterV2,
             adminFeeRecipient,
             _deployment.genesisTimestamp,
             baseYieldAdminFeeRate,

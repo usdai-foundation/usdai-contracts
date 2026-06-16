@@ -7,32 +7,8 @@ pragma solidity ^0.8.0;
  */
 interface ILoanRouterPositionManager {
     /*------------------------------------------------------------------------*/
-    /* Errors */
-    /*------------------------------------------------------------------------*/
-
-    /**
-     * @notice Invalid timelock cancellation
-     */
-    error InvalidTimelockCancellation();
-
-    /*------------------------------------------------------------------------*/
     /* Events */
     /*------------------------------------------------------------------------*/
-
-    /**
-     * @notice Loan timelock deposited
-     * @param loanTermsHash Loan terms hash
-     * @param usdaiAmount USDai amount
-     * @param expiration Expiration timestamp
-     */
-    event LoanTimelockDeposited(bytes32 indexed loanTermsHash, uint256 usdaiAmount, uint64 expiration);
-
-    /**
-     * @notice Loan timelock cancelled
-     * @param loanTermsHash Loan terms hash
-     * @param usdaiAmount USDai amount
-     */
-    event LoanTimelockCancelled(bytes32 indexed loanTermsHash, uint256 usdaiAmount);
 
     /**
      * @notice Loan repayment deposited
@@ -81,22 +57,6 @@ interface ILoanRouterPositionManager {
     /*------------------------------------------------------------------------*/
     /* Permissioned API */
     /*------------------------------------------------------------------------*/
-
-    /**
-     * @notice Deposit loan timelock
-     * @param loanTermsHash Loan terms hash
-     * @param usdaiAmount USDai amount
-     * @param expiration Expiration timestamp
-     */
-    function depositLoanTimelock(bytes32 loanTermsHash, uint256 usdaiAmount, uint64 expiration) external;
-
-    /**
-     * @notice Cancel loan timelock
-     * @param loanTermsHash Loan terms hash
-     */
-    function cancelLoanTimelock(
-        bytes32 loanTermsHash
-    ) external;
 
     /**
      * @notice Deposit loan repayment

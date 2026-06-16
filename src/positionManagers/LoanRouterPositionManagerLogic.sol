@@ -9,7 +9,8 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 import {IUSDai} from "../interfaces/IUSDai.sol";
 
-import {ILoanRouter} from "@usdai-loan-router-contracts/interfaces/ILoanRouter.sol";
+import {ILoanRouterV1} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV1.sol";
+import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
 
 import {LoanRouterPositionManager} from "./LoanRouterPositionManager.sol";
 
@@ -45,7 +46,7 @@ library LoanRouterPositionManagerLogic {
     error UnsupportedCurrency(address currency);
 
     /**
-     * @notice Invalid loan router
+     * @notice Invalid caller
      */
     error InvalidCaller();
 
@@ -54,18 +55,33 @@ library LoanRouterPositionManagerLogic {
      */
     error InvalidLender();
 
+    /**
+     * @notice Duplicate origination
+     */
+    error DuplicateOrigination();
+
+    /**
+     * @notice Invalid amount
+     */
+    error InvalidAmount();
+
+    /**
+     * @notice Loan not found
+     */
+    error LoanNotFound();
+
     /*------------------------------------------------------------------------*/
     /* Internal helpers */
     /*------------------------------------------------------------------------*/
 
     /**
-     * @notice Validate hook context
+     * @notice Validate hook context (V2 loan terms)
      * @param loanTerms Loan terms
      * @param trancheIndex Tranche index
      * @param loanRouter Loan router
      */
     function _validateHookContext(
-        ILoanRouter.LoanTerms calldata loanTerms,
+        ILoanRouterV2.LoanTermsV2 calldata loanTerms,
         uint8 trancheIndex,
         address loanRouter
     ) internal view {
@@ -113,8 +129,9 @@ library LoanRouterPositionManagerLogic {
         accrual.timestamp = uint64(block.timestamp);
     }
 
-    /*
+    /**
      * @notice Get value in USDai
+     * @param usdai USDai
      * @param priceOracle Price oracle
      * @param currencyToken Currency token address
      * @param amount Amount of currency token
@@ -122,7 +139,7 @@ library LoanRouterPositionManagerLogic {
      */
     function _value(
         IUSDai usdai,
-        IPriceOracle priceOracle_,
+        IPriceOracle priceOracle,
         address currencyToken,
         uint256 amount
     ) internal view returns (uint256) {
@@ -135,7 +152,7 @@ library LoanRouterPositionManagerLogic {
         }
 
         /* Get price of currency token in terms of USDai */
-        uint256 price = priceOracle_.price(currencyToken);
+        uint256 price = priceOracle.price(currencyToken);
         return Math.mulDiv(amount, price, 10 ** IERC20Metadata(currencyToken).decimals());
     }
 
@@ -144,7 +161,7 @@ library LoanRouterPositionManagerLogic {
     /*------------------------------------------------------------------------*/
 
     /**
-     * @notice Get loan router balance
+     * @notice Get loan router balances
      * @param loansStorage Loans storage
      * @param usdai USDai
      * @param priceOracle Price oracle
@@ -152,7 +169,7 @@ library LoanRouterPositionManagerLogic {
      * @return Pending loan balance
      * @return Accrued loan interest balance
      */
-    function loanRouterBalance(
+    function loanRouterBalances(
         LoanRouterPositionManager.Loans storage loansStorage,
         IUSDai usdai,
         IPriceOracle priceOracle
@@ -225,7 +242,7 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle loan originated hook
+     * @notice Handle loan originated hook (V2)
      * @param depositTimelockStorage Deposit timelock storage
      * @param loansStorage Loans storage
      * @param loanTerms Loan terms
@@ -238,7 +255,7 @@ library LoanRouterPositionManagerLogic {
     function loanOriginated(
         LoanRouterPositionManager.DepositTimelock storage depositTimelockStorage,
         LoanRouterPositionManager.Loans storage loansStorage,
-        ILoanRouter.LoanTerms calldata loanTerms,
+        ILoanRouterV2.LoanTermsV2 calldata loanTerms,
         bytes32 loanTermsHash,
         uint8 trancheIndex,
         IUSDai usdai,
@@ -260,7 +277,7 @@ library LoanRouterPositionManagerLogic {
         /* Compute scaled accrual rate */
         uint256 accrualRate = loanTerms.trancheSpecs[trancheIndex].rate * loanTerms.trancheSpecs[trancheIndex].amount;
 
-        /* Register curency token */
+        /* Register currency token */
         loansStorage.currencyTokens.add(loanTerms.currencyToken);
 
         /* Update loan in loans storage */
@@ -282,7 +299,7 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle loan repayment hook
+     * @notice Handle loan repayment hook (V2)
      * @param loansStorage Loans storage
      * @param loanTerms Loan terms
      * @param loanTermsHash Loan terms hash
@@ -290,11 +307,12 @@ library LoanRouterPositionManagerLogic {
      * @param loanBalance Loan balance
      * @param principal Principal amount
      * @param interest Interest amount
+     * @param adminFeeRate Admin fee rate
      * @param loanRouter Loan router
      */
     function loanRepayment(
         LoanRouterPositionManager.Loans storage loansStorage,
-        ILoanRouter.LoanTerms calldata loanTerms,
+        ILoanRouterV2.LoanTermsV2 calldata loanTerms,
         bytes32 loanTermsHash,
         uint8 trancheIndex,
         uint256 loanBalance,
@@ -349,15 +367,37 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle loan liquidated hook
+     * @notice Handle loan fee paid hook (V2)
+     * @param loansStorage Loans storage
+     * @param loanTerms Loan terms
+     * @param fee Fee paid
+     */
+    function loanFeePaid(
+        LoanRouterPositionManager.Loans storage loansStorage,
+        ILoanRouterV2.LoanTermsV2 calldata loanTerms,
+        bytes32,
+        uint8,
+        uint256 fee,
+        address loanRouter
+    ) external {
+        /* Validate caller is loan router */
+        if (msg.sender != loanRouter) revert InvalidCaller();
+
+        /* Update repayment balances */
+        loansStorage.repaymentBalances[loanTerms.currencyToken].repayment += fee;
+    }
+
+    /**
+     * @notice Handle loan liquidated hook (V2)
      * @param loansStorage Loans storage
      * @param loanTerms Loan terms
      * @param loanTermsHash Loan terms hash
      * @param trancheIndex Tranche index
+     * @param loanRouter Loan router
      */
     function loanLiquidated(
         LoanRouterPositionManager.Loans storage loansStorage,
-        ILoanRouter.LoanTerms calldata loanTerms,
+        ILoanRouterV2.LoanTermsV2 calldata loanTerms,
         bytes32 loanTermsHash,
         uint8 trancheIndex,
         address loanRouter
@@ -382,7 +422,7 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle loan collateral liquidated hook
+     * @notice Handle loan collateral liquidated hook (V2)
      * @param loansStorage Loans storage
      * @param loanTerms Loan terms
      * @param loanTermsHash Loan terms hash
@@ -394,7 +434,7 @@ library LoanRouterPositionManagerLogic {
      */
     function loanCollateralLiquidated(
         LoanRouterPositionManager.Loans storage loansStorage,
-        ILoanRouter.LoanTerms calldata loanTerms,
+        ILoanRouterV2.LoanTermsV2 calldata loanTerms,
         bytes32 loanTermsHash,
         uint8 trancheIndex,
         uint256 principal,
@@ -426,5 +466,94 @@ library LoanRouterPositionManagerLogic {
 
         /* Delete loan */
         delete loansStorage.loan[loanTermsHash];
+    }
+
+    /**
+     * @notice Handle loan migrated hook
+     * @param loansStorage Loans storage
+     * @param loanTermsV1 V1 loan terms
+     * @param loanTermsHashV1 V1 loan terms hash
+     * @param loanTermsV2 V2 loan terms
+     * @param loanTermsHashV2 V2 loan terms hash
+     * @param originationTimestampV2 V2 origination timestamp
+     * @param usdai USDai
+     * @param priceOracle Price oracle
+     * @param loanRouter Loan router
+     */
+    function loanMigrated(
+        LoanRouterPositionManager.Loans storage loansStorage,
+        ILoanRouterV1.LoanTerms calldata loanTermsV1,
+        bytes32 loanTermsHashV1,
+        ILoanRouterV2.LoanTermsV2 calldata loanTermsV2,
+        bytes32 loanTermsHashV2,
+        uint64 originationTimestampV2,
+        IUSDai usdai,
+        IPriceOracle priceOracle,
+        address loanRouter
+    ) external {
+        /* Validate caller is V2 loan router and LRPM is the tranche 0 lender */
+        _validateHookContext(loanTermsV2, 0, loanRouter);
+
+        /* Validate V2 currency token */
+        _validateCurrencyToken(loanTermsV2.currencyToken, usdai, priceOracle);
+
+        /* Load V1 loan into memory */
+        LoanRouterPositionManager.Loan memory loanV1 = loansStorage.loan[loanTermsHashV1];
+
+        /* Revert if V1 loan is not tracked by this position manager */
+        if (loanV1.lastRepaymentTimestamp == 0) revert LoanNotFound();
+
+        /* Revert if V2 hash is already in use */
+        if (loansStorage.loan[loanTermsHashV2].lastRepaymentTimestamp != 0) revert DuplicateOrigination();
+
+        /* Get V1 currency accrual state */
+        LoanRouterPositionManager.Accrual storage currencyAccrualV1 =
+            loansStorage.interestAccruals[loanTermsV1.currencyToken];
+
+        /* Remove V1 loan's past interest from V1 currency accrual pool */
+        _accrue(currencyAccrualV1, loanV1.accrualRate, uint64(block.timestamp), loanV1.lastRepaymentTimestamp);
+
+        /* Remove V1 accrual rate from V1 currency pool */
+        currencyAccrualV1.rate -= loanV1.accrualRate;
+
+        /* Remove V1 pending balance from V1 currency pool */
+        loansStorage.pendingBalances[loanTermsV1.currencyToken] -= loanV1.pendingBalance;
+
+        /* Delete V1 loan entry */
+        delete loansStorage.loan[loanTermsHashV1];
+
+        /* Compute V2 accrual rate */
+        uint256 accrualRateV2 = loanTermsV2.trancheSpecs[0].rate * loanTermsV2.trancheSpecs[0].amount;
+
+        /* Get V2 currency accrual state */
+        LoanRouterPositionManager.Accrual storage currencyAccrualV2 =
+            loansStorage.interestAccruals[loanTermsV2.currencyToken];
+
+        /* Bring V2 currency accrual up to the current block */
+        _accrue(currencyAccrualV2, 0, 0, 0);
+
+        /* Get origination timestamp */
+        uint64 lastRepaymentTimestamp =
+            originationTimestampV2 == 0 ? loanV1.lastRepaymentTimestamp : originationTimestampV2;
+
+        /* Inject normalized V1 past interest into V2 accrual pool */
+        currencyAccrualV2.accrued += accrualRateV2 * (block.timestamp - lastRepaymentTimestamp);
+
+        /* Add V2 accrual rate to V2 currency pool */
+        currencyAccrualV2.rate += accrualRateV2;
+
+        /* Register V2 currency token */
+        loansStorage.currencyTokens.add(loanTermsV2.currencyToken);
+
+        /* Add V2 pending balance to V2 currency pool */
+        loansStorage.pendingBalances[loanTermsV2.currencyToken] += loanTermsV2.trancheSpecs[0].amount;
+
+        /* Create V2 loan entry with migration timestamp as the start of interest accrual */
+        loansStorage.loan[loanTermsHashV2] = LoanRouterPositionManager.Loan({
+            accrualRate: accrualRateV2,
+            pendingBalance: loanTermsV2.trancheSpecs[0].amount,
+            lastRepaymentTimestamp: lastRepaymentTimestamp,
+            liquidationTimestamp: 0
+        });
     }
 }

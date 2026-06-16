@@ -1,16 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.29;
 
-import {Vm} from "forge-std/Vm.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {BaseTest} from "../Base.t.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-
-import {SimpleInterestRateModel} from "@usdai-loan-router-contracts/rates/SimpleInterestRateModel.sol";
-import {USDaiSwapAdapter} from "@usdai-loan-router-contracts/swapAdapters/USDaiSwapAdapter.sol";
-import {ILoanRouter} from "@usdai-loan-router-contracts/interfaces/ILoanRouter.sol";
+import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
 
 import {TestERC721} from "test/tokens/TestERC721.sol";
 
@@ -24,27 +19,24 @@ abstract contract BaseLoanRouterTest is BaseTest {
     /*------------------------------------------------------------------------*/
 
     /* Time constants */
-    uint64 internal constant LOAN_DURATION = 1080 days; // 3 years - 5 days
-    uint64 internal constant REPAYMENT_INTERVAL = 30 days;
+    uint16 internal constant DURATION_DAYS = 1080; // 3 years - 5 days
+    uint8 internal constant REPAYMENT_DAY = 1;
     uint64 internal constant GRACE_PERIOD_DURATION = 30 days;
 
     /* Rate constants (per second) */
-    // 5% per annum = 0.05 / (365 * 86400) = ~1.585e-9 per second
     uint256 internal constant GRACE_PERIOD_RATE = 1585489599; // 5% APR in per-second rate (scaled by 1e18)
+    uint256 internal constant RATE_10_PCT = 3171469679; // 10% APR (per-second, 1e18 scaled)
 
-    // Interest rates for tranches (per second, scaled by 1e18)
-    // 10% APR = ~3.171e-9 per second = 3171469679 (scaled by 1e18)
-    uint256 internal constant RATE_10_PCT = 3171469679;
-
-    /* Number of token IDs to wrap */
+    /* Number of NFTs minted for collateral */
     uint256 internal constant NUM_TOKEN_IDS = 128;
 
     /*------------------------------------------------------------------------*/
     /* Contract instances */
     /*------------------------------------------------------------------------*/
 
-    SimpleInterestRateModel internal interestRateModel;
-    USDaiSwapAdapter internal usdaiSwapAdapter;
+    address internal interestRateModel;
+    address internal usdaiSwapAdapter;
+    address internal originationFeeModel;
 
     TestERC721 internal testNFT;
 
@@ -52,14 +44,8 @@ abstract contract BaseLoanRouterTest is BaseTest {
     /* Test state */
     /*------------------------------------------------------------------------*/
 
-    uint256 internal wrappedTokenId;
-    uint256[] internal tokenIdsToWrap;
-    bytes internal encodedBundle;
-
-    // Second bundle for multi-loan tests
-    uint256 internal wrappedTokenId2;
-    uint256[] internal tokenIdsToWrap2;
-    bytes internal encodedBundle2;
+    uint256[] internal collateralTokenIds;
+    uint256[] internal collateralTokenIds2;
 
     /*------------------------------------------------------------------------*/
     /* Setup */
@@ -68,15 +54,10 @@ abstract contract BaseLoanRouterTest is BaseTest {
     function setUp() public virtual override {
         super.setUp();
 
-        // Deploy test NFT
         deployTestNFT();
+        deploySentinels();
 
-        // Deploy contracts
-        deployInterestRateModel();
-        deployUSDaiSwapAdapter();
-
-        // Setup
-        setupCollateralWrapper();
+        setupCollateral();
         simulateYieldDeposit(10_000_000 ether);
     }
 
@@ -84,17 +65,15 @@ abstract contract BaseLoanRouterTest is BaseTest {
     /* Deployment functions */
     /*------------------------------------------------------------------------*/
 
-    function deployInterestRateModel() internal {
-        vm.startPrank(users.deployer);
-        interestRateModel = new SimpleInterestRateModel();
-        vm.stopPrank();
-    }
-
-    function deployUSDaiSwapAdapter() internal {
-        vm.startPrank(users.deployer);
-        usdaiSwapAdapter = new USDaiSwapAdapter(address(usdai));
-        depositTimelock.addSwapAdapter(address(usdai), address(usdaiSwapAdapter));
-        vm.stopPrank();
+    /**
+     * @notice Stuff plausible non-zero addresses into LoanTermsV2 fields that the mock
+     *         router never dereferences. Real fee/rate/adapter contracts would replace
+     *         these in production.
+     */
+    function deploySentinels() internal {
+        interestRateModel = makeAddr("interestRateModel");
+        usdaiSwapAdapter = makeAddr("usdaiSwapAdapter");
+        originationFeeModel = makeAddr("originationFeeModel");
     }
 
     function deployTestNFT() internal {
@@ -107,69 +86,27 @@ abstract contract BaseLoanRouterTest is BaseTest {
     /* Setup functions */
     /*------------------------------------------------------------------------*/
 
-    function setupCollateralWrapper() internal {
-        // Mint NFTs to borrower
+    function setupCollateral() internal {
         vm.startPrank(users.deployer);
 
-        // Create first array of token IDs to wrap
-        tokenIdsToWrap = new uint256[](NUM_TOKEN_IDS);
+        collateralTokenIds = new uint256[](NUM_TOKEN_IDS);
         for (uint256 i = 0; i < NUM_TOKEN_IDS; i++) {
             uint256 tokenId = 1000 + i;
             testNFT.mint(users.borrower, tokenId);
-            tokenIdsToWrap[i] = tokenId;
+            collateralTokenIds[i] = tokenId;
         }
 
-        // Create second array of token IDs to wrap
-        tokenIdsToWrap2 = new uint256[](NUM_TOKEN_IDS);
+        collateralTokenIds2 = new uint256[](NUM_TOKEN_IDS);
         for (uint256 i = 0; i < NUM_TOKEN_IDS; i++) {
             uint256 tokenId = 2000 + i;
             testNFT.mint(users.borrower, tokenId);
-            tokenIdsToWrap2[i] = tokenId;
+            collateralTokenIds2[i] = tokenId;
         }
 
         vm.stopPrank();
 
-        // Wrap first bundle
         vm.startPrank(users.borrower);
-
-        // Approve collateral wrapper to transfer NFTs
-        testNFT.setApprovalForAll(address(bundleCollateralWrapper), true);
-
-        // Record logs to capture BundleMinted event
-        vm.recordLogs();
-
-        // Mint first bundle (wrap NFTs)
-        wrappedTokenId = bundleCollateralWrapper.mint(address(testNFT), tokenIdsToWrap);
-
-        // Get the BundleMinted event and extract encodedBundle
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics[0] == keccak256("BundleMinted(uint256,address,bytes)")) {
-                encodedBundle = abi.decode(logs[i].data, (bytes));
-                break;
-            }
-        }
-
-        require(encodedBundle.length > 0, "Failed to capture encodedBundle from event");
-
-        // Wrap second bundle
-        vm.recordLogs();
-
-        // Mint second bundle (wrap NFTs)
-        wrappedTokenId2 = bundleCollateralWrapper.mint(address(testNFT), tokenIdsToWrap2);
-
-        // Get the BundleMinted event and extract encodedBundle2
-        Vm.Log[] memory logs2 = vm.getRecordedLogs();
-        for (uint256 i = 0; i < logs2.length; i++) {
-            if (logs2[i].topics[0] == keccak256("BundleMinted(uint256,address,bytes)")) {
-                encodedBundle2 = abi.decode(logs2[i].data, (bytes));
-                break;
-            }
-        }
-
-        require(encodedBundle2.length > 0, "Failed to capture encodedBundle2 from event");
-
-        IERC721(bundleCollateralWrapper).setApprovalForAll(address(loanRouter), true);
+        testNFT.setApprovalForAll(address(collateralTimelock), true);
         IERC20(USDC).approve(address(loanRouter), type(uint256).max);
         vm.stopPrank();
     }
@@ -180,45 +117,52 @@ abstract contract BaseLoanRouterTest is BaseTest {
 
     function createLoanTerms(
         uint256 principal
-    ) internal view returns (ILoanRouter.LoanTerms memory) {
-        return createLoanTerms(principal, wrappedTokenId, encodedBundle);
+    ) internal view virtual returns (ILoanRouterV2.LoanTermsV2 memory) {
+        return createLoanTerms(principal, collateralTokenIds);
     }
 
     function createLoanTerms(
         uint256 principal,
-        uint256 _wrappedTokenId,
-        bytes memory _encodedBundle
-    ) internal view returns (ILoanRouter.LoanTerms memory) {
-        return createLoanTerms(principal, _wrappedTokenId, _encodedBundle, USDC);
+        uint256[] memory _collateralTokenIds
+    ) internal view virtual returns (ILoanRouterV2.LoanTermsV2 memory) {
+        return createLoanTerms(principal, _collateralTokenIds, USDC);
     }
 
     function createLoanTerms(
         uint256 principal,
-        uint256 _wrappedTokenId,
-        bytes memory _encodedBundle,
+        uint256[] memory _collateralTokenIds,
         address currencyToken
-    ) internal view returns (ILoanRouter.LoanTerms memory) {
-        ILoanRouter.TrancheSpec[] memory trancheSpecs = new ILoanRouter.TrancheSpec[](1);
+    ) internal view returns (ILoanRouterV2.LoanTermsV2 memory) {
+        ILoanRouterV2.TrancheSpec[] memory trancheSpecs = new ILoanRouterV2.TrancheSpec[](1);
+        trancheSpecs[0] =
+            ILoanRouterV2.TrancheSpec({lender: address(stakedUsdai), amount: principal, rate: RATE_10_PCT});
 
-        trancheSpecs[0] = ILoanRouter.TrancheSpec({lender: address(stakedUsdai), amount: principal, rate: RATE_10_PCT});
+        ILoanRouterV2.FeeSpec[] memory feeSpecs = new ILoanRouterV2.FeeSpec[](1);
+        feeSpecs[0] = ILoanRouterV2.FeeSpec({
+            kind: ILoanRouterV2.FeeKind.Origination,
+            recipient: users.feeRecipient,
+            model: originationFeeModel,
+            options: abi.encode(uint256(principal / 100))
+        });
 
-        return ILoanRouter.LoanTerms({
+        return ILoanRouterV2.LoanTermsV2({
             expiration: uint64(block.timestamp + 7 days),
             borrower: users.borrower,
             currencyToken: currencyToken,
-            collateralToken: address(bundleCollateralWrapper),
-            collateralTokenId: _wrappedTokenId,
-            duration: LOAN_DURATION,
-            repaymentInterval: REPAYMENT_INTERVAL,
-            interestRateModel: address(interestRateModel),
-            gracePeriodRate: GRACE_PERIOD_RATE,
-            gracePeriodDuration: uint256(GRACE_PERIOD_DURATION),
-            feeSpec: ILoanRouter.FeeSpec({
-                originationFee: principal / 100, // 1% origination fee
-                exitFee: 0
-            }),
+            collateralToken: address(testNFT),
+            collateralTokenIds: _collateralTokenIds,
             trancheSpecs: trancheSpecs,
-            collateralWrapperContext: _encodedBundle,
+            feeSpecs: feeSpecs,
+            interestRateSpec: ILoanRouterV2.InterestRateSpec({
+                model: interestRateModel,
+                options: abi.encode(uint64(GRACE_PERIOD_DURATION), uint256(GRACE_PERIOD_RATE))
+            }),
+            repaymentSpec: ILoanRouterV2.RepaymentSpec({
+                day: REPAYMENT_DAY,
+                totalDurationDays: DURATION_DAYS,
+                timezoneOffsetSeconds: 0
+            }),
+            approvalAddresses: new address[](0),
             options: ""
         });
     }
