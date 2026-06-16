@@ -17,4 +17,12 @@ contract MockLoanRouter {
     function depositTimelock() external view returns (address) {
         return address(0);
     }
+
+    /**
+     * @notice Get escrow timelock
+     * @return Escrow timelock address
+     */
+    function escrowTimelock() external view returns (address) {
+        return address(0);
+    }
 }

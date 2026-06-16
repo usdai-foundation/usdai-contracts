@@ -18,10 +18,9 @@ import {UniswapPoolHelpers} from "./helpers/UniswapPoolHelpers.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {ICollateralTimelock} from "@usdai-loan-router-contracts/interfaces/ICollateralTimelock.sol";
+import {IEscrowTimelock} from "@usdai-loan-router-contracts/interfaces/IEscrowTimelock.sol";
 import {IDepositTimelock} from "@usdai-loan-router-contracts/interfaces/IDepositTimelock.sol";
 import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
-
-import {MockEscrowTimelock} from "./mocks/MockEscrowTimelock.sol";
 
 import {USDai} from "src/USDai.sol";
 import {StakedUSDai} from "src/StakedUSDai.sol";
@@ -59,8 +58,8 @@ abstract contract BaseTest is Test {
     /* Locked shares */
     uint128 internal constant LOCKED_SHARES = 1e6;
 
-    /* Admin fee rate for loan router (10%) */
-    uint256 internal constant LOAN_ROUTER_ADMIN_FEE_RATE = 1000; // 10% in basis points
+    /* Admin fee rate for loan router (1%), matches deployStakedUsdai() constructor arg */
+    uint256 internal constant LOAN_ROUTER_ADMIN_FEE_RATE = 100; // 1% in basis points
 
     /* APR 4.5% to daily interest rate = 4.5% * 1e18 / (365 * 86400) = 1426940639 (scaled by 1e18)  */
     uint256 internal constant BASE_YIELD_RATE_1 = 1426940639;
@@ -125,7 +124,7 @@ abstract contract BaseTest is Test {
     UniswapV3SwapAdapter internal uniswapV3SwapAdapter;
     ICollateralTimelock internal collateralTimelock;
     IDepositTimelock internal depositTimelock;
-    MockEscrowTimelock internal escrowTimelock;
+    IEscrowTimelock internal escrowTimelock;
     ILoanRouterV2 internal loanRouter;
     BaseYieldEscrow internal baseYieldEscrow;
     ChainlinkPriceOracle internal priceOracle;
@@ -156,8 +155,6 @@ abstract contract BaseTest is Test {
         deployUsd();
         deployUsdPool();
 
-        deployEscrowTimelock();
-
         deployBaseYieldEscrow();
         deployUniswapV3SwapAdapter();
         deployTestPYUSDPriceFeed();
@@ -165,6 +162,7 @@ abstract contract BaseTest is Test {
         deployUsdai();
 
         deployCollateralTimelock();
+        deployEscrowTimelock();
         deployDepositTimelock();
         deployLoanRouter();
 
@@ -430,8 +428,56 @@ abstract contract BaseTest is Test {
     }
 
     function deployEscrowTimelock() internal {
+        string memory json;
+        try vm.readFile("externalOut/EscrowTimelock.sol/EscrowTimelock.json") returns (string memory content) {
+            json = content;
+        } catch {
+            revert(
+                "EscrowTimelock artifact not found in externalOut/. Run: FOUNDRY_OUT=$(pwd)/externalOut forge build --root lib/usdai-loan-router-contracts"
+            );
+        }
+
+        uint64 nonce = vm.getNonce(users.deployer);
+        // escrow impl +0, escrow proxy +1, deposit impl +2, deposit proxy +3,
+        // loanRouter proxy +4, stakedUsdai impl +5, stakedUsdai proxy +6
+        address futureDepositor = vm.computeCreateAddress(users.deployer, nonce + 6);
+
+        bytes memory initCode = abi.encodePacked(
+            vm.parseJsonBytes(json, ".bytecode.object"), abi.encode(address(usdai), futureDepositor, users.admin)
+        );
+
         vm.startPrank(users.deployer);
-        escrowTimelock = new MockEscrowTimelock();
+
+        address impl;
+        assembly {
+            impl := create(0, add(initCode, 0x20), mload(initCode))
+        }
+        require(impl != address(0), "EscrowTimelock implementation deployment failed");
+
+        escrowTimelock = IEscrowTimelock(
+            address(new ERC1967Proxy(impl, abi.encodeWithSignature("initialize(address)", users.admin)))
+        );
+
+        vm.stopPrank();
+    }
+
+    function grantEscrowTimelockRoles() internal {
+        /* Sanity check deployment wiring */
+        require(
+            ILoanRouterV2(address(loanRouter)).escrowTimelock() == address(escrowTimelock),
+            "escrowTimelock address mismatch in loanRouter"
+        );
+        require(escrowTimelock.depositor() == address(stakedUsdai), "escrowTimelock depositor mismatch");
+
+        /* Fund admin with USDai so it can cover interest on cancel and withdraw */
+        vm.startPrank(users.manager);
+        usd.approve(address(usdai), 10_000 ether);
+        usdai.deposit(address(usd), 10_000 ether, 1, users.admin);
+        vm.stopPrank();
+
+        vm.startPrank(users.admin);
+        /* Admin approves escrowTimelock to pull USDai back (principal return + interest) */
+        IERC20(address(usdai)).approve(address(escrowTimelock), type(uint256).max);
         vm.stopPrank();
     }
 

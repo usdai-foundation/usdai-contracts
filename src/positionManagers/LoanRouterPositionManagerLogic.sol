@@ -13,6 +13,8 @@ import {ILoanRouterV1} from "@usdai-loan-router-contracts/interfaces/ILoanRouter
 import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
 
 import {LoanRouterPositionManager} from "./LoanRouterPositionManager.sol";
+import {StakedUSDaiStorage} from "../StakedUSDaiStorage.sol";
+import {PositionManager} from "./PositionManager.sol";
 
 /**
  * @title Loan Router Position Manager Logic
@@ -69,6 +71,11 @@ library LoanRouterPositionManagerLogic {
      * @notice Loan not found
      */
     error LoanNotFound();
+
+    /**
+     * @notice Duplicate deposit
+     */
+    error DuplicateDeposit();
 
     /*------------------------------------------------------------------------*/
     /* Internal helpers */
@@ -154,6 +161,40 @@ library LoanRouterPositionManagerLogic {
         /* Get price of currency token in terms of USDai */
         uint256 price = priceOracle.price(currencyToken);
         return Math.mulDiv(amount, price, 10 ** IERC20Metadata(currencyToken).decimals());
+    }
+
+    /**
+     * @notice Handle interest accrued hook
+     * @param loansStorage Loans storage
+     * @param usdai USDai
+     * @param token Token address
+     * @param interest Interest amount
+     * @param adminFeeRate Admin fee rate
+     */
+    function _escrowInterestAccrued(
+        LoanRouterPositionManager.Loans storage loansStorage,
+        IUSDai usdai,
+        address token,
+        uint256 interest,
+        uint256 adminFeeRate
+    ) internal {
+        /* Validate currency token */
+        if (token != address(usdai)) revert UnsupportedCurrency(token);
+
+        /* Do nothing if interest is 0 */
+        if (interest == 0) return;
+
+        /* Register currency token */
+        loansStorage.currencyTokens.add(token);
+
+        /* Compute admin fee amount */
+        uint256 adminFee = interest * adminFeeRate / BASIS_POINTS_SCALE;
+
+        /* Update repayment balances */
+        loansStorage.repaymentBalances[token].adminFee += adminFee;
+
+        /* Update repayment balance with interest amount minus admin fee */
+        loansStorage.repaymentBalances[token].repayment += interest - adminFee;
     }
 
     /*------------------------------------------------------------------------*/
@@ -279,6 +320,9 @@ library LoanRouterPositionManagerLogic {
 
         /* Register currency token */
         loansStorage.currencyTokens.add(loanTerms.currencyToken);
+
+        /* Validate loan not already tracked */
+        if (loansStorage.loan[loanTermsHash].lastRepaymentTimestamp != 0) revert DuplicateOrigination();
 
         /* Update loan in loans storage */
         loansStorage.loan[loanTermsHash] = LoanRouterPositionManager.Loan(
@@ -466,6 +510,112 @@ library LoanRouterPositionManagerLogic {
 
         /* Delete loan */
         delete loansStorage.loan[loanTermsHash];
+    }
+
+    /**
+     * @notice Handle escrow cancelled interest accrued hook
+     * @param loansStorage Loans storage
+     * @param usdai USDai
+     * @param interest Interest amount
+     * @param adminFeeRate Admin fee rate
+     */
+    function escrowCancelled(
+        LoanRouterPositionManager.Loans storage loansStorage,
+        IUSDai usdai,
+        uint256 interest,
+        uint256 adminFeeRate
+    ) external {
+        _escrowInterestAccrued(loansStorage, usdai, address(usdai), interest, adminFeeRate);
+    }
+
+    /**
+     * @notice Handle withdrawn escrow interest accrued hook
+     * @param loansStorage Loans storage
+     * @param usdai USDai
+     * @param escrowTimelock Escrow timelock
+     * @param token Token address
+     * @param interest Interest amount
+     * @param adminFeeRate Admin fee rate
+     */
+    function escrowWithdrawn(
+        LoanRouterPositionManager.Loans storage loansStorage,
+        IUSDai usdai,
+        address escrowTimelock,
+        address token,
+        uint256 interest,
+        uint256 adminFeeRate
+    ) external {
+        /* Validate caller is escrow timelock */
+        if (msg.sender != escrowTimelock) revert InvalidCaller();
+
+        _escrowInterestAccrued(loansStorage, usdai, token, interest, adminFeeRate);
+    }
+
+    /**
+     * @notice Deposit funds
+     * @param depositsStorage Deposits storage
+     * @param redemptionStateStorage Redemption state storage
+     * @param depositTimelockStorage Deposit timelock storage
+     * @param usdai USDai
+     * @param usdaiAmount USDai amount
+     * @param loanTermsHash Loan terms hash
+     * @param timelock Timelock
+     */
+    function depositFunds(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
+        StakedUSDaiStorage.RedemptionState storage redemptionStateStorage,
+        LoanRouterPositionManager.DepositTimelock storage depositTimelockStorage,
+        address usdai,
+        uint256 usdaiAmount,
+        bytes32 loanTermsHash,
+        address timelock
+    ) external {
+        /* Get USDai balance */
+        uint256 usdaiBalance = depositsStorage.balance - redemptionStateStorage.balance;
+
+        /* Validate USDai balance */
+        if (usdaiAmount > usdaiBalance) revert PositionManager.InsufficientBalance();
+
+        /* Validate not already deposited */
+        if (depositTimelockStorage.amounts[loanTermsHash] != 0) revert DuplicateDeposit();
+
+        /* Approve USDai */
+        IERC20(usdai).approve(timelock, usdaiAmount);
+
+        /* Update deposits balance */
+        depositsStorage.balance -= usdaiAmount;
+
+        /* Update deposit timelock balance and amounts */
+        depositTimelockStorage.balance += usdaiAmount;
+        depositTimelockStorage.amounts[loanTermsHash] = usdaiAmount;
+    }
+
+    /**
+     * @notice Withdraw funds
+     * @param depositsStorage Deposits storage
+     * @param depositTimelockStorage Deposit timelock storage
+     * @param loanTermsHash Loan terms hash
+     * @return USDai amount
+     */
+    function withdrawFunds(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
+        LoanRouterPositionManager.DepositTimelock storage depositTimelockStorage,
+        bytes32 loanTermsHash
+    ) external returns (uint256) {
+        /* Get USDai amount */
+        uint256 usdaiAmount = depositTimelockStorage.amounts[loanTermsHash];
+
+        /* Update deposit timelock balance */
+        depositTimelockStorage.balance -= usdaiAmount;
+
+        /* Delete deposit timelock amount for loan terms hash */
+        delete depositTimelockStorage.amounts[loanTermsHash];
+
+        /* Update deposits balance */
+        depositsStorage.balance += usdaiAmount;
+
+        /* Return USDai amount */
+        return usdaiAmount;
     }
 
     /**

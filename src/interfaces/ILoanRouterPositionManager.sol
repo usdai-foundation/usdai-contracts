@@ -7,8 +7,40 @@ pragma solidity ^0.8.0;
  */
 interface ILoanRouterPositionManager {
     /*------------------------------------------------------------------------*/
+    /* Errors */
+    /*------------------------------------------------------------------------*/
+
+    /**
+     * @notice Invalid timelock cancellation
+     */
+    error InvalidTimelockCancellation();
+
+    /*------------------------------------------------------------------------*/
     /* Events */
     /*------------------------------------------------------------------------*/
+
+    /**
+     * @notice Loan escrow timelock deposited
+     * @param loanTermsHash Loan terms hash
+     * @param usdaiAmount USDai amount
+     * @param interestRate Interest rate
+     */
+    event LoanEscrowTimelockDeposited(bytes32 indexed loanTermsHash, uint256 usdaiAmount, uint256 interestRate);
+
+    /**
+     * @notice Loan escrow timelock withdrawn
+     * @param loanTermsHash Loan terms hash
+     * @param interestAmount Interest amount (in USDai)
+     */
+    event LoanEscrowTimelockWithdrawn(bytes32 indexed loanTermsHash, uint256 interestAmount);
+
+    /**
+     * @notice Loan escrow timelock cancelled
+     * @param loanTermsHash Loan terms hash
+     * @param usdaiAmount Deposited USDai amount
+     * @param interestAmount Interest amount (in USDai)
+     */
+    event LoanEscrowTimelockCancelled(bytes32 indexed loanTermsHash, uint256 usdaiAmount, uint256 interestAmount);
 
     /**
      * @notice Loan repayment deposited
@@ -57,6 +89,22 @@ interface ILoanRouterPositionManager {
     /*------------------------------------------------------------------------*/
     /* Permissioned API */
     /*------------------------------------------------------------------------*/
+
+    /**
+     * @notice Deposit escrow loan timelock
+     * @param loanTermsHash Loan terms hash
+     * @param usdaiAmount USDai amount
+     * @param interestRate Interest rate
+     */
+    function depositEscrowLoanTimelock(bytes32 loanTermsHash, uint256 usdaiAmount, uint256 interestRate) external;
+
+    /**
+     * @notice Cancel escrow loan timelock
+     * @param loanTermsHash Loan terms hash
+     */
+    function cancelEscrowLoanTimelock(
+        bytes32 loanTermsHash
+    ) external;
 
     /**
      * @notice Deposit loan repayment

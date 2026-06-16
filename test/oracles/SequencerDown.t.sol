@@ -39,12 +39,13 @@ contract StakedUSDaiSequencerDownTest is BaseLoanRouterTest {
 
         /* Have a user actually deposit so totalShares > 0 and depositSharePrice/
            redemptionSharePrice exercise _assets() instead of short-circuiting.
-           The narrow Uniswap pool (tick range [-1, 1]) is already heavily skewed by
-           BaseLoanRouterTest.simulateYieldDeposit, so we do exactly one USD→PYUSD
-           swap here and keep half of the resulting USDai approved for reuse in tests. */
+            The narrow Uniswap pool (tick range [-1, 1]) is completely drained by
+           BaseLoanRouterTest.simulateYieldDeposit, so deposit PYUSD directly to
+           skip the swap and keep half the resulting USDai approved for reuse in tests. */
+        deal(address(PYUSD), users.normalUser1, 1_000_000 ether);
         vm.startPrank(users.normalUser1);
-        usd.approve(address(usdai), 1_000_000 ether);
-        uint256 usdaiAmount = usdai.deposit(address(usd), 1_000_000 ether, 0, users.normalUser1);
+        PYUSD.approve(address(usdai), 1_000_000 ether);
+        uint256 usdaiAmount = usdai.deposit(address(PYUSD), 1_000_000 ether, 0, users.normalUser1);
         usdai.approve(address(stakedUsdai), usdaiAmount);
         stakedUsdai.deposit(usdaiAmount / 2, users.normalUser1);
         vm.stopPrank();

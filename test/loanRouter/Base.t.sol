@@ -59,6 +59,8 @@ abstract contract BaseLoanRouterTest is BaseTest {
 
         setupCollateral();
         simulateYieldDeposit(10_000_000 ether);
+
+        grantEscrowTimelockRoles();
     }
 
     /*------------------------------------------------------------------------*/
