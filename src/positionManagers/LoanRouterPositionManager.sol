@@ -16,9 +16,7 @@ import {ILoanRouterPositionManager} from "../interfaces/ILoanRouterPositionManag
 
 import {IEscrowTimelock} from "@usdai-loan-router-contracts/interfaces/IEscrowTimelock.sol";
 import {IEscrowTimelockHooks} from "@usdai-loan-router-contracts/interfaces/IEscrowTimelockHooks.sol";
-import {ILoanRouterV1} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV1.sol";
 import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
-import {ILoanRouterV2Hooks} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2Hooks.sol";
 
 import {LoanRouterPositionManagerLogic} from "./LoanRouterPositionManagerLogic.sol";
 
@@ -32,8 +30,8 @@ abstract contract LoanRouterPositionManager is
     PositionManager,
     StakedUSDaiStorage,
     ILoanRouterPositionManager,
-    ILoanRouterV2Hooks,
-    IEscrowTimelockHooks
+    IEscrowTimelockHooks,
+    ILoanRouterV2Hooks
 {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -363,29 +361,6 @@ abstract contract LoanRouterPositionManager is
             principal,
             interest,
             _loanRouterAdminFeeRate,
-            _loanRouterV2
-        );
-    }
-
-    /**
-     * @inheritdoc ILoanRouterV2Hooks
-     */
-    function onLoanMigrated(
-        ILoanRouterV1.LoanTerms calldata loanTermsV1,
-        bytes32 loanTermsHashV1,
-        ILoanRouterV2.LoanTermsV2 calldata loanTermsV2,
-        bytes32 loanTermsHashV2,
-        uint64 originationTimestampV2
-    ) external nonReentrant {
-        LoanRouterPositionManagerLogic.loanMigrated(
-            _getLoansStorage(),
-            loanTermsV1,
-            loanTermsHashV1,
-            loanTermsV2,
-            loanTermsHashV2,
-            originationTimestampV2,
-            _usdai,
-            _priceOracle,
             _loanRouterV2
         );
     }
