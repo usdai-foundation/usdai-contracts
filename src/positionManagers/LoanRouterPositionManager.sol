@@ -16,6 +16,8 @@ import {ILoanRouterPositionManager} from "../interfaces/ILoanRouterPositionManag
 
 import {IEscrowTimelock} from "@usdai-loan-router-contracts/interfaces/IEscrowTimelock.sol";
 import {IEscrowTimelockHooks} from "@usdai-loan-router-contracts/interfaces/IEscrowTimelockHooks.sol";
+import {IDepositTimelock} from "@usdai-loan-router-contracts/interfaces/IDepositTimelock.sol";
+import {IDepositTimelockHooks} from "@usdai-loan-router-contracts/interfaces/IDepositTimelockHooks.sol";
 import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
 import {ILoanRouterV2Hooks} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2Hooks.sol";
 
@@ -32,6 +34,7 @@ abstract contract LoanRouterPositionManager is
     StakedUSDaiStorage,
     ILoanRouterPositionManager,
     IEscrowTimelockHooks,
+    IDepositTimelockHooks,
     ILoanRouterV2Hooks
 {
     using SafeERC20 for IERC20;
@@ -125,6 +128,16 @@ abstract contract LoanRouterPositionManager is
     address internal immutable _loanRouterV2;
 
     /**
+     * @notice Escrow timelock
+     */
+    address internal immutable _escrowTimelock;
+
+    /**
+     * @notice Deposit timelock
+     */
+    address internal immutable _depositTimelock;
+
+    /**
      * @notice Admin fee rate
      */
     uint256 internal immutable _loanRouterAdminFeeRate;
@@ -140,6 +153,9 @@ abstract contract LoanRouterPositionManager is
      */
     constructor(address loanRouterV2_, uint256 loanRouterAdminFeeRate_) {
         _loanRouterV2 = loanRouterV2_;
+
+        _escrowTimelock = ILoanRouterV2(loanRouterV2_).escrowTimelock();
+        _depositTimelock = ILoanRouterV2(loanRouterV2_).depositTimelock();
         _loanRouterAdminFeeRate = loanRouterAdminFeeRate_;
     }
 
@@ -201,14 +217,6 @@ abstract contract LoanRouterPositionManager is
     }
 
     /**
-     * @notice Get escrow timelock
-     * @return Escrow timelock
-     */
-    function _escrowTimelock() internal view returns (IEscrowTimelock) {
-        return IEscrowTimelock(ILoanRouterV2(_loanRouterV2).escrowTimelock());
-    }
-
-    /**
      * @inheritdoc PositionManager
      */
     function _assets(
@@ -218,7 +226,7 @@ abstract contract LoanRouterPositionManager is
             loanRouterBalances();
 
         /* Get accrued escrow interest balance */
-        uint256 accruedEscrowInterestBalance = _escrowTimelock().accrued();
+        uint256 accruedEscrowInterestBalance = IEscrowTimelock(_escrowTimelock).accrued();
 
         /* Return total assets in terms of USDai */
         return depositTimelockBalance() + repaymentLoanBalance + pendingLoanBalance
@@ -261,11 +269,32 @@ abstract contract LoanRouterPositionManager is
     ) external nonReentrant {
         /* Handle interest accrued */
         LoanRouterPositionManagerLogic.escrowWithdrawn(
-            _getLoansStorage(), _usdai, address(_escrowTimelock()), token, interestAmount, _loanRouterAdminFeeRate
+            _getLoansStorage(), _usdai, _escrowTimelock, token, interestAmount, _loanRouterAdminFeeRate
         );
 
         /* Emit LoanEscrowTimelockWithdrawn */
         emit LoanEscrowTimelockWithdrawn(loanTermsHash, interestAmount);
+    }
+
+    /*------------------------------------------------------------------------*/
+    /* Deposit Timelock Hooks */
+    /*------------------------------------------------------------------------*/
+
+    /**
+     * @inheritdoc IDepositTimelockHooks
+     */
+    function onDepositWithdrawn(
+        address,
+        bytes32,
+        address depositToken,
+        uint256,
+        uint256,
+        uint256 refundDepositAmount
+    ) external nonReentrant {
+        /* Handle deposit timelock withdrawn */
+        LoanRouterPositionManagerLogic.depositWithdrawn(
+            _getLoansStorage(), _usdai, _priceOracle, _depositTimelock, depositToken, refundDepositAmount
+        );
     }
 
     /*------------------------------------------------------------------------*/
@@ -387,7 +416,7 @@ abstract contract LoanRouterPositionManager is
     /**
      * @inheritdoc ILoanRouterPositionManager
      */
-    function depositEscrowLoanTimelock(
+    function depositLoanEscrowTimelock(
         bytes32 loanTermsHash,
         uint256 usdaiAmount,
         uint256 interestRate
@@ -400,11 +429,13 @@ abstract contract LoanRouterPositionManager is
             address(_usdai),
             usdaiAmount,
             loanTermsHash,
-            address(_escrowTimelock())
+            _escrowTimelock
         );
 
         /* Deposit funds against the V2 router */
-        _escrowTimelock().deposit(_loanRouterV2, loanTermsHash, address(_usdai), usdaiAmount, interestRate);
+        IEscrowTimelock(_escrowTimelock).deposit(
+            _loanRouterV2, loanTermsHash, address(_usdai), usdaiAmount, interestRate
+        );
 
         /* Emit LoanEscrowTimelockDeposited */
         emit LoanEscrowTimelockDeposited(loanTermsHash, usdaiAmount, interestRate);
@@ -413,7 +444,35 @@ abstract contract LoanRouterPositionManager is
     /**
      * @inheritdoc ILoanRouterPositionManager
      */
-    function cancelEscrowLoanTimelock(
+    function depositLoanDepositTimelock(
+        bytes32 loanTermsHash,
+        uint256 usdaiAmount,
+        uint64 expiration
+    ) external onlyRole(STRATEGY_ADMIN_ROLE) nonReentrant {
+        /* Handle deposit accounting and approval */
+        LoanRouterPositionManagerLogic.depositFunds(
+            _getDepositsStorage(),
+            _getRedemptionStateStorage(),
+            _getDepositTimelockStorage(),
+            address(_usdai),
+            usdaiAmount,
+            loanTermsHash,
+            _depositTimelock
+        );
+
+        /* Deposit funds against the V2 router */
+        IDepositTimelock(_depositTimelock).deposit(
+            _loanRouterV2, loanTermsHash, address(_usdai), usdaiAmount, expiration
+        );
+
+        /* Emit LoanDepositTimelockDeposited */
+        emit LoanDepositTimelockDeposited(loanTermsHash, usdaiAmount, expiration);
+    }
+
+    /**
+     * @inheritdoc ILoanRouterPositionManager
+     */
+    function cancelLoanEscrowTimelock(
         bytes32 loanTermsHash
     ) external onlyRole(STRATEGY_ADMIN_ROLE) nonReentrant {
         uint256 usdaiAmount = LoanRouterPositionManagerLogic.withdrawFunds(
@@ -421,7 +480,8 @@ abstract contract LoanRouterPositionManager is
         );
 
         /* Cancel deposit */
-        (uint256 depositAmount, uint256 interestAmount) = _escrowTimelock().cancel(_loanRouterV2, loanTermsHash);
+        (uint256 depositAmount, uint256 interestAmount) =
+            IEscrowTimelock(_escrowTimelock).cancel(_loanRouterV2, loanTermsHash);
         if (depositAmount != usdaiAmount) revert InvalidTimelockCancellation();
 
         /* Handle interest accrued */
@@ -431,6 +491,25 @@ abstract contract LoanRouterPositionManager is
 
         /* Emit LoanEscrowTimelockCancelled */
         emit LoanEscrowTimelockCancelled(loanTermsHash, usdaiAmount, interestAmount);
+    }
+
+    /**
+     * @inheritdoc ILoanRouterPositionManager
+     */
+    function cancelLoanDepositTimelock(
+        bytes32 loanTermsHash
+    ) external onlyRole(STRATEGY_ADMIN_ROLE) nonReentrant {
+        uint256 usdaiAmount = LoanRouterPositionManagerLogic.withdrawFunds(
+            _getDepositsStorage(), _getDepositTimelockStorage(), loanTermsHash
+        );
+
+        /* Cancel deposit */
+        if (IDepositTimelock(_depositTimelock).cancel(_loanRouterV2, loanTermsHash) != usdaiAmount) {
+            revert InvalidTimelockCancellation();
+        }
+
+        /* Emit LoanDepositTimelockCancelled */
+        emit LoanDepositTimelockCancelled(loanTermsHash, usdaiAmount);
     }
 
     /**

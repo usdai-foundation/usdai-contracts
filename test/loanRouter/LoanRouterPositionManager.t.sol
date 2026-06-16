@@ -21,6 +21,15 @@ contract LoanRouterPositionManagerTest is BaseLoanRouterTest {
     uint256 internal constant DEPOSIT_AMOUNT = 1_000_000 ether;
 
     /*------------------------------------------------------------------------*/
+    /* Helpers */
+    /*------------------------------------------------------------------------*/
+
+    function _depositIntoTimelock() internal {
+        vm.prank(users.manager);
+        stakedUsdai.depositLoanDepositTimelock(LOAN_HASH, DEPOSIT_AMOUNT, uint64(block.timestamp + 7 days));
+    }
+
+    /*------------------------------------------------------------------------*/
     /* Wiring */
     /*------------------------------------------------------------------------*/
 

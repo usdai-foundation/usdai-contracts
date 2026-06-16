@@ -43,6 +43,21 @@ interface ILoanRouterPositionManager {
     event LoanEscrowTimelockCancelled(bytes32 indexed loanTermsHash, uint256 usdaiAmount, uint256 interestAmount);
 
     /**
+     * @notice Loan timelock deposited
+     * @param loanTermsHash Loan terms hash
+     * @param usdaiAmount USDai amount
+     * @param expiration Expiration timestamp
+     */
+    event LoanDepositTimelockDeposited(bytes32 indexed loanTermsHash, uint256 usdaiAmount, uint64 expiration);
+
+    /**
+     * @notice Loan timelock cancelled
+     * @param loanTermsHash Loan terms hash
+     * @param usdaiAmount USDai amount
+     */
+    event LoanDepositTimelockCancelled(bytes32 indexed loanTermsHash, uint256 usdaiAmount);
+
+    /**
      * @notice Loan repayment deposited
      * @param currencyToken Currency token
      * @param depositAmount Deposit amount
@@ -96,13 +111,29 @@ interface ILoanRouterPositionManager {
      * @param usdaiAmount USDai amount
      * @param interestRate Interest rate
      */
-    function depositEscrowLoanTimelock(bytes32 loanTermsHash, uint256 usdaiAmount, uint256 interestRate) external;
+    function depositLoanEscrowTimelock(bytes32 loanTermsHash, uint256 usdaiAmount, uint256 interestRate) external;
 
     /**
      * @notice Cancel escrow loan timelock
      * @param loanTermsHash Loan terms hash
      */
-    function cancelEscrowLoanTimelock(
+    function cancelLoanEscrowTimelock(
+        bytes32 loanTermsHash
+    ) external;
+
+    /**
+     * @notice Deposit loan deposit timelock
+     * @param loanTermsHash Loan terms hash
+     * @param usdaiAmount USDai amount
+     * @param expiration Expiration timestamp
+     */
+    function depositLoanDepositTimelock(bytes32 loanTermsHash, uint256 usdaiAmount, uint64 expiration) external;
+
+    /**
+     * @notice Cancel loan deposit timelock
+     * @param loanTermsHash Loan terms hash
+     */
+    function cancelLoanDepositTimelock(
         bytes32 loanTermsHash
     ) external;
 

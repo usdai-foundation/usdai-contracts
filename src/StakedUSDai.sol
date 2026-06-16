@@ -800,6 +800,6 @@ contract StakedUSDai is
             || interfaceId == type(IStakedUSDai).interfaceId || interfaceId == type(IMintableBurnable).interfaceId
             || interfaceId == type(IERC7575).interfaceId || interfaceId == type(ILoanRouterV2Hooks).interfaceId
             || interfaceId == type(IERC721Receiver).interfaceId || interfaceId == type(IEscrowTimelockHooks).interfaceId
-            || super.supportsInterface(interfaceId);
+            || interfaceId == type(IDepositTimelockHooks).interfaceId || super.supportsInterface(interfaceId);
     }
 }

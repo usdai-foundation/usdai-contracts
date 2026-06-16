@@ -255,21 +255,21 @@ library LoanRouterPositionManagerLogic {
     /*------------------------------------------------------------------------*/
 
     /**
-     * @notice Handle deposit timelock refunded hook
+     * @notice Handle deposit timelock withdrawn hook
      * @param loansStorage Loans storage
      * @param usdai USDai
      * @param priceOracle Price oracle
      * @param depositTimelock Deposit timelock
      * @param token Token address
-     * @param amount Amount
+     * @param refundedAmount Refunded amount
      */
-    function depositTimelockRefunded(
+    function depositWithdrawn(
         LoanRouterPositionManager.Loans storage loansStorage,
         IUSDai usdai,
         IPriceOracle priceOracle,
         address depositTimelock,
         address token,
-        uint256 amount
+        uint256 refundedAmount
     ) external {
         /* Validate caller is deposit timelock */
         if (msg.sender != depositTimelock) revert InvalidCaller();
@@ -278,13 +278,13 @@ library LoanRouterPositionManagerLogic {
         _validateCurrencyToken(token, usdai, priceOracle);
 
         /* Do nothing if amount is 0 */
-        if (amount == 0) return;
+        if (refundedAmount == 0) return;
 
         /* Register currency token */
         loansStorage.currencyTokens.add(token);
 
         /* Update repayment balance with refunded amount */
-        loansStorage.repaymentBalances[token].repayment += amount;
+        loansStorage.repaymentBalances[token].repayment += refundedAmount;
     }
 
     /**

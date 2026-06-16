@@ -25,7 +25,7 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
 
     function _depositEscrow() internal {
         vm.prank(users.manager);
-        stakedUsdai.depositEscrowLoanTimelock(LOAN_HASH, DEPOSIT_AMOUNT, RATE_10_PCT);
+        stakedUsdai.depositLoanEscrowTimelock(LOAN_HASH, DEPOSIT_AMOUNT, RATE_10_PCT);
     }
 
     function _expectedInterest(
@@ -51,7 +51,7 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
     }
 
     /*------------------------------------------------------------------------*/
-    /* depositEscrowLoanTimelock */
+    /* depositLoanEscrowTimelock */
     /*------------------------------------------------------------------------*/
 
     function test__DepositEscrowLoanTimelock_IncreasesDepositTimelockBalance() public {
@@ -76,37 +76,37 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         vm.expectEmit(true, false, false, true, address(stakedUsdai));
         emit ILoanRouterPositionManager.LoanEscrowTimelockDeposited(LOAN_HASH, DEPOSIT_AMOUNT, RATE_10_PCT);
         vm.prank(users.manager);
-        stakedUsdai.depositEscrowLoanTimelock(LOAN_HASH, DEPOSIT_AMOUNT, RATE_10_PCT);
+        stakedUsdai.depositLoanEscrowTimelock(LOAN_HASH, DEPOSIT_AMOUNT, RATE_10_PCT);
     }
 
     function test__DepositEscrowLoanTimelock_RevertWhen_InsufficientBalance() public {
         vm.expectRevert(PositionManager.InsufficientBalance.selector);
         vm.prank(users.manager);
-        stakedUsdai.depositEscrowLoanTimelock(LOAN_HASH, 100_000_000 ether, RATE_10_PCT);
+        stakedUsdai.depositLoanEscrowTimelock(LOAN_HASH, 100_000_000 ether, RATE_10_PCT);
     }
 
     function test__DepositEscrowLoanTimelock_RevertWhen_NotStrategyAdmin() public {
         vm.expectRevert();
         vm.prank(users.normalUser1);
-        stakedUsdai.depositEscrowLoanTimelock(LOAN_HASH, DEPOSIT_AMOUNT, RATE_10_PCT);
+        stakedUsdai.depositLoanEscrowTimelock(LOAN_HASH, DEPOSIT_AMOUNT, RATE_10_PCT);
     }
 
     function test__DepositEscrowLoanTimelock_RevertWhen_DuplicateDeposit() public {
         _depositEscrow();
         vm.expectRevert(LoanRouterPositionManagerLogic.DuplicateDeposit.selector);
         vm.prank(users.manager);
-        stakedUsdai.depositEscrowLoanTimelock(LOAN_HASH, DEPOSIT_AMOUNT, RATE_10_PCT);
+        stakedUsdai.depositLoanEscrowTimelock(LOAN_HASH, DEPOSIT_AMOUNT, RATE_10_PCT);
     }
 
     /*------------------------------------------------------------------------*/
-    /* cancelEscrowLoanTimelock */
+    /* cancelLoanEscrowTimelock */
     /*------------------------------------------------------------------------*/
 
     function test__CancelEscrowLoanTimelock_ZeroesDepositTimelockBalance() public {
         _depositEscrow();
         warp(30 days);
         vm.prank(users.manager);
-        stakedUsdai.cancelEscrowLoanTimelock(LOAN_HASH);
+        stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
         assertEq(stakedUsdai.depositTimelockBalance(), 0);
     }
 
@@ -117,7 +117,7 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         assertEq(IERC20(address(usdai)).balanceOf(address(stakedUsdai)), stakedUsdaiBalanceBefore - DEPOSIT_AMOUNT);
 
         vm.prank(users.manager);
-        stakedUsdai.cancelEscrowLoanTimelock(LOAN_HASH);
+        stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
         /* principal returned; no interest yet since zero time elapsed */
         assertEq(IERC20(address(usdai)).balanceOf(address(stakedUsdai)), stakedUsdaiBalanceBefore);
     }
@@ -130,7 +130,7 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         uint256 expectedInterest = _expectedInterest(30 days);
 
         vm.prank(users.manager);
-        stakedUsdai.cancelEscrowLoanTimelock(LOAN_HASH);
+        stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
 
         /* Admin received DEPOSIT_AMOUNT on deposit and must return deposit + interest on cancel. */
         assertEq(
@@ -146,7 +146,7 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         uint256 expectedRepayment = expectedInterest - expectedAdminFee;
 
         vm.prank(users.manager);
-        stakedUsdai.cancelEscrowLoanTimelock(LOAN_HASH);
+        stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
 
         (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances(address(usdai));
         assertApproxEqAbs(repayment, expectedRepayment, 1);
@@ -156,7 +156,7 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
     function test__CancelEscrowLoanTimelock_ZeroInterest_WhenCancelledImmediately() public {
         _depositEscrow();
         vm.prank(users.manager);
-        stakedUsdai.cancelEscrowLoanTimelock(LOAN_HASH);
+        stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
 
         (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances(address(usdai));
         assertEq(repayment, 0, "no interest should accrue with zero elapsed time");
@@ -172,14 +172,14 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         emit ILoanRouterPositionManager.LoanEscrowTimelockCancelled(LOAN_HASH, DEPOSIT_AMOUNT, expectedInterest);
 
         vm.prank(users.manager);
-        stakedUsdai.cancelEscrowLoanTimelock(LOAN_HASH);
+        stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
     }
 
     function test__CancelEscrowLoanTimelock_RevertWhen_NotStrategyAdmin() public {
         _depositEscrow();
         vm.expectRevert();
         vm.prank(users.normalUser1);
-        stakedUsdai.cancelEscrowLoanTimelock(LOAN_HASH);
+        stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
     }
 
     /*------------------------------------------------------------------------*/

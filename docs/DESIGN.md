@@ -179,16 +179,16 @@ is responsible for deploying funds for loans and depositing loan repayments.
 
 Loans are funded from deposits in the Deposit Timelock, which are released when
 a borrower executes a loan. Funds can be deposited into the Deposit Timelock
-for specific, predetermined loan terms with the `depositLoanTimelock()` API:
+for specific, predetermined loan terms with the `depositLoanDepositTimelock()` API:
 
 ```solidity
 /**
- * @notice Deposit loan timelock
+ * @notice Deposit loan deposit timelock
  * @param loanTermsHash Loan terms hash
  * @param usdaiAmount USDai amount
  * @param expiration Expiration timestamp
  */
-function depositLoanTimelock(bytes32 loanTermsHash, uint256 usdaiAmount, uint64 expiration) external;
+function depositLoanDepositTimelock(bytes32 loanTermsHash, uint256 usdaiAmount, uint64 expiration) external;
 ```
 
 ```mermaid
@@ -199,14 +199,14 @@ sequenceDiagram
 ```
 
 In case of loan terms changes or expiration, funds can be withdrawn from the
-Deposit Timelock with the `cancelLoanTimelock()` API:
+Deposit Timelock with the `cancelLoanDepositTimelock()` API:
 
 ```solidity
 /**
- * @notice Cancel loan timelock
+ * @notice Cancel loan deposit timelock
  * @param loanTermsHash Loan terms hash
  */
-function cancelLoanTimelock(
+function cancelLoanDepositTimelock(
     bytes32 loanTermsHash
 ) external;
 ```
