@@ -1,3 +1,8 @@
+* StakedUSDai v1.9 - 06/24/2026
+    * Migrate from LoanRouter to LoanRouterV2.
+    * Add support for EscrowTimelock.
+    * Temporarily remove support for DepositTimelock.
+
 * OToken v1.1 - 04/24/2026
     * Replace `BRIDGE_ADMIN_ROLE` with immutable address.
     * Add `pause()` and `unpause()` APIs.
