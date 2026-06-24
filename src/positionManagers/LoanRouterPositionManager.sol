@@ -470,28 +470,10 @@ abstract contract LoanRouterPositionManager is
         uint256 usdaiAmountMinimum,
         bytes calldata data
     ) external onlyRole(STRATEGY_ADMIN_ROLE) nonReentrant {
-        /* Validate admin fee balance */
-        if (adminFeeAmount > _getLoansStorage().repaymentBalances[currencyToken].adminFee) {
-            revert InsufficientBalance();
-        }
-
-        /* Update admin fee balance */
-        _getLoansStorage().repaymentBalances[currencyToken].adminFee -= adminFeeAmount;
-
-        /* Get USDai deposit amount */
-        uint256 usdaiDepositAmount;
-        if (currencyToken == address(_usdai)) {
-            usdaiDepositAmount = adminFeeAmount;
-        } else {
-            /* Approve currency token */
-            IERC20(currencyToken).forceApprove(address(_usdai), adminFeeAmount);
-
-            /* Swap currency token to USDai */
-            usdaiDepositAmount = _usdai.deposit(currencyToken, adminFeeAmount, usdaiAmountMinimum, address(this), data);
-        }
-
-        /* Transfer USDai to admin fee recipient */
-        _usdai.transfer(_adminFeeRecipient, usdaiDepositAmount);
+        /* Handle withdraw admin fee accounting and swap */
+        uint256 usdaiDepositAmount = LoanRouterPositionManagerLogic.withdrawAdminFee(
+            _getLoansStorage(), _usdai, _adminFeeRecipient, currencyToken, adminFeeAmount, usdaiAmountMinimum, data
+        );
 
         /* Emit AdminFeeWithdrawn */
         emit AdminFeeWithdrawn(currencyToken, adminFeeAmount, usdaiDepositAmount);

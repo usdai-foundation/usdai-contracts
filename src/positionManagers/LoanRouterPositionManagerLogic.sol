@@ -3,6 +3,7 @@ pragma solidity 0.8.29;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
@@ -21,6 +22,7 @@ import {PositionManager} from "./PositionManager.sol";
  * @author USD.AI Foundation
  */
 library LoanRouterPositionManagerLogic {
+    using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
 
     /*------------------------------------------------------------------------*/
@@ -749,6 +751,52 @@ library LoanRouterPositionManagerLogic {
 
         /* Update deposits balance */
         depositsStorage.balance += usdaiDepositAmount;
+
+        /* Return USDai deposit amount */
+        return usdaiDepositAmount;
+    }
+
+    /**
+     * @notice Withdraw admin fee
+     * @param loansStorage Loans storage
+     * @param usdai USDai
+     * @param currencyToken Currency token address
+     * @param adminFeeAmount Admin fee amount
+     * @param usdaiAmountMinimum Minimum USDai amount
+     * @param data Swap data
+     * @return USDai deposit amount
+     */
+    function withdrawAdminFee(
+        LoanRouterPositionManager.Loans storage loansStorage,
+        IUSDai usdai,
+        address adminFeeRecipient,
+        address currencyToken,
+        uint256 adminFeeAmount,
+        uint256 usdaiAmountMinimum,
+        bytes calldata data
+    ) external returns (uint256) {
+        /* Validate admin fee balance */
+        if (adminFeeAmount > loansStorage.repaymentBalances[currencyToken].adminFee) {
+            revert PositionManager.InsufficientBalance();
+        }
+
+        /* Update admin fee balance */
+        loansStorage.repaymentBalances[currencyToken].adminFee -= adminFeeAmount;
+
+        /* Get USDai deposit amount */
+        uint256 usdaiDepositAmount;
+        if (currencyToken == address(usdai)) {
+            usdaiDepositAmount = adminFeeAmount;
+        } else {
+            /* Approve currency token */
+            IERC20(currencyToken).forceApprove(address(usdai), adminFeeAmount);
+
+            /* Swap currency token to USDai */
+            usdaiDepositAmount = usdai.deposit(currencyToken, adminFeeAmount, usdaiAmountMinimum, address(this), data);
+        }
+
+        /* Transfer USDai to admin fee recipient */
+        usdai.transfer(adminFeeRecipient, usdaiDepositAmount);
 
         /* Return USDai deposit amount */
         return usdaiDepositAmount;
