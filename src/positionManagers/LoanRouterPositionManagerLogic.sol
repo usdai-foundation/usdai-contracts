@@ -67,6 +67,21 @@ library LoanRouterPositionManagerLogic {
      */
     error DuplicateDeposit();
 
+    /**
+     * @notice Loan not found
+     */
+    error LoanNotFound();
+
+    /**
+     * @notice Invalid currency token
+     */
+    error InvalidCurrencyToken();
+
+    /**
+     * @notice Invalid amount
+     */
+    error InvalidAmount();
+
     /*------------------------------------------------------------------------*/
     /* Internal helpers */
     /*------------------------------------------------------------------------*/
@@ -398,6 +413,74 @@ library LoanRouterPositionManagerLogic {
             loan.pendingBalance = newLoanBalance;
             loan.lastRepaymentTimestamp = uint64(block.timestamp);
         }
+    }
+
+    /**
+     * @notice Handle loan refinanced hook (V2)
+     * @param loansStorage Loans storage
+     * @param oldLoanTerms Old loan terms
+     * @param newLoanTerms New loan terms
+     * @param oldLoanTermsHash Old loan terms hash
+     * @param newLoanTermsHash New loan terms hash
+     * @param loanRouter Loan router
+     */
+    function loanRefinanced(
+        LoanRouterPositionManager.Loans storage loansStorage,
+        ILoanRouterV2.LoanTermsV2 calldata oldLoanTerms,
+        ILoanRouterV2.LoanTermsV2 calldata newLoanTerms,
+        bytes32 oldLoanTermsHash,
+        bytes32 newLoanTermsHash,
+        address loanRouter
+    ) external {
+        /* Validate hook context */
+        _validateHookContext(oldLoanTerms, 0, loanRouter);
+        _validateHookContext(newLoanTerms, 0, loanRouter);
+
+        /* Get loans */
+        LoanRouterPositionManager.Loan memory oldLoan = loansStorage.loan[oldLoanTermsHash];
+        LoanRouterPositionManager.Loan storage newLoan = loansStorage.loan[newLoanTermsHash];
+
+        /* Revert if old loan is not tracked by this position manager */
+        if (oldLoan.lastRepaymentTimestamp == 0) revert LoanNotFound();
+
+        /* Revert if new loan is already tracked by this position manager */
+        if (newLoan.lastRepaymentTimestamp != 0) revert DuplicateOrigination();
+
+        /* Revert if old and new loan currency tokens are different */
+        if (oldLoanTerms.currencyToken != newLoanTerms.currencyToken) revert InvalidCurrencyToken();
+
+        /* Revert if old and new loan amounts are different */
+        if (oldLoanTerms.trancheSpecs[0].amount != newLoanTerms.trancheSpecs[0].amount) revert InvalidAmount();
+
+        /* Get currency accrual state */
+        LoanRouterPositionManager.Accrual storage currencyAccrual =
+            loansStorage.interestAccruals[oldLoanTerms.currencyToken];
+
+        /* Remove old loan's past interest and bring currency accrual up to the current block */
+        _accrue(currencyAccrual, oldLoan.accrualRate, uint64(block.timestamp), oldLoan.lastRepaymentTimestamp);
+
+        /* Remove old accrual rate from currency pool */
+        currencyAccrual.rate -= oldLoan.accrualRate;
+
+        /* Delete old loan entry */
+        delete loansStorage.loan[oldLoanTermsHash];
+
+        /* Compute new accrual rate on the outstanding balance, not the original notional */
+        uint256 newAccrualRate = newLoanTerms.trancheSpecs[0].rate * oldLoan.pendingBalance;
+
+        /* Re-accrue the elapsed window at the new rate so the new loan keeps the old repayment timestamp */
+        currencyAccrual.accrued += newAccrualRate * (block.timestamp - oldLoan.lastRepaymentTimestamp);
+
+        /* Add new accrual rate to currency pool */
+        currencyAccrual.rate += newAccrualRate;
+
+        /* Create loan entry carrying the outstanding balance forward */
+        loansStorage.loan[newLoanTermsHash] = LoanRouterPositionManager.Loan({
+            accrualRate: newAccrualRate,
+            pendingBalance: oldLoan.pendingBalance,
+            lastRepaymentTimestamp: oldLoan.lastRepaymentTimestamp,
+            liquidationTimestamp: 0
+        });
     }
 
     /**

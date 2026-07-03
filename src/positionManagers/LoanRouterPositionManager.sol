@@ -17,6 +17,7 @@ import {ILoanRouterPositionManager} from "../interfaces/ILoanRouterPositionManag
 import {IEscrowTimelock} from "@usdai-loan-router-contracts/interfaces/IEscrowTimelock.sol";
 import {IEscrowTimelockHooks} from "@usdai-loan-router-contracts/interfaces/IEscrowTimelockHooks.sol";
 import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
+import {ILoanRouterV2Hooks} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2Hooks.sol";
 
 import {LoanRouterPositionManagerLogic} from "./LoanRouterPositionManagerLogic.sol";
 
@@ -362,6 +363,20 @@ abstract contract LoanRouterPositionManager is
             interest,
             _loanRouterAdminFeeRate,
             _loanRouterV2
+        );
+    }
+
+    /**
+     * @inheritdoc ILoanRouterV2Hooks
+     */
+    function onLoanRefinanced(
+        ILoanRouterV2.LoanTermsV2 calldata oldLoanTerms,
+        ILoanRouterV2.LoanTermsV2 calldata newLoanTerms,
+        bytes32 oldLoanTermsHash,
+        bytes32 newLoanTermsHash
+    ) external nonReentrant {
+        LoanRouterPositionManagerLogic.loanRefinanced(
+            _getLoansStorage(), oldLoanTerms, newLoanTerms, oldLoanTermsHash, newLoanTermsHash, _loanRouterV2
         );
     }
 

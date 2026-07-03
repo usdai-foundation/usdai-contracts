@@ -572,27 +572,16 @@ abstract contract BaseTest is Test {
         _linkLibrary(llHex, loanLogicJson, "src/ScheduleLogic.sol", "ScheduleLogic", scheduleLogicLib);
         address loanLogicLib = _deployFromHex(string(llHex), "");
 
-        /* Deploy MigrationLogic (links: LoanLogicV2) */
-        string memory migrationJson = vm.readFile("externalOut/MigrationLogic.sol/MigrationLogic.json");
-        bytes memory mlHex = bytes(vm.parseJsonString(migrationJson, ".bytecode.object"));
-        _linkLibrary(mlHex, migrationJson, "src/LoanLogicV2.sol", "LoanLogicV2", loanLogicLib);
-        address migrationLogicLib = _deployFromHex(string(mlHex), "");
-
         /* Link and deploy LoanRouterV2 implementation */
         bytes memory lrHex = bytes(vm.parseJsonString(routerJson, ".bytecode.object"));
         _linkLibrary(lrHex, routerJson, "src/LoanLogicV2.sol", "LoanLogicV2", loanLogicLib);
-        _linkLibrary(lrHex, routerJson, "src/MigrationLogic.sol", "MigrationLogic", migrationLogicLib);
         _linkLibrary(lrHex, routerJson, "src/ScheduleLogic.sol", "ScheduleLogic", scheduleLogicLib);
 
-        /* Constructor args: (feeRecipient_, collateralTimelock_, depositTimelock_, escrowTimelock_, loanRouterV1_) */
+        /* Constructor args: (feeRecipient_, collateralTimelock_, depositTimelock_, escrowTimelock_) */
         address impl = _deployFromHex(
             string(lrHex),
             abi.encode(
-                users.feeRecipient,
-                address(collateralTimelock),
-                address(depositTimelock),
-                address(escrowTimelock),
-                address(0)
+                users.feeRecipient, address(collateralTimelock), address(depositTimelock), address(escrowTimelock)
             )
         );
 
