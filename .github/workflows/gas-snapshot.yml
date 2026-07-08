@@ -1,0 +1,67 @@
+name: Forge gas snapshot
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  FOUNDRY_PROFILE: default
+  ARBITRUM_RPC_URL: https://arbitrum.gateway.tenderly.co
+
+jobs:
+  gas-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          submodules: recursive
+          path: base
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: 1.3.5
+          cache: true
+
+      - name: Generate gas report diff
+        run: |
+          SCRIPT=.github/workflows/scripts/gas-report.sh
+          chmod +x "$SCRIPT"
+
+          (cd base && "../$SCRIPT" capture) > /tmp/base.gas-report.json
+          "$SCRIPT" capture > /tmp/head.gas-report.json
+
+          "$SCRIPT" compare /tmp/head.gas-report.json /tmp/base.gas-report.json | tee gas-diff.md
+
+      - name: Post gas report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          MARKER='<!-- gas-snapshot -->'
+          {
+            echo "$MARKER"
+            echo ""
+            echo "### Gas Report Diff"
+            echo ""
+            cat gas-diff.md
+          } > comment.md
+
+          COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+            --paginate \
+            --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" | head -1)
+
+          if [ -n "$COMMENT_ID" ]; then
+            gh api --method PATCH "repos/${REPO}/issues/comments/${COMMENT_ID}" -F body=@comment.md
+          else
+            gh api --method POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -F body=@comment.md
+          fi
