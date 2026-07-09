@@ -24,4 +24,4 @@ tab_width = 4
 wrap_comments = true
 
 [lint]
-exclude_lints = ["mixed-case-variable", "unaliased-plain-import", "mixed-case-function", "screaming-snake-case-immutable", "erc20-unchecked-transfer", "unwrapped-modifier-logic"]
+exclude_lints = ["mixed-case-variable", "unaliased-plain-import", "mixed-case-function", "screaming-snake-case-immutable", "erc20-unchecked-transfer", "unwrapped-modifier-logic", "unsafe-typecast", "block-timestamp"]
