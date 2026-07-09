@@ -1,3 +1,7 @@
+* StakedUSDai v1.10 - 07/08/2026
+    * Remove migration logic for LoanRouter v1.
+    * Add support for LoanRouterV2 `onLoanRefinanced()` hook.
+
 * StakedUSDai v1.9 - 06/24/2026
     * Migrate from LoanRouter to LoanRouterV2.
     * Add support for EscrowTimelock.
