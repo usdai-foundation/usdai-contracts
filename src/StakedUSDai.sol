@@ -320,6 +320,13 @@ contract StakedUSDai is
         return shares;
     }
 
+    /**
+     * @notice Mint shares
+     * @param shares Shares to mint
+     * @param receiver Receiver address
+     * @param maxAmount Maximum amount
+     * @return assets Assets deposited
+     */
     function _mint(
         uint256 shares,
         address receiver,

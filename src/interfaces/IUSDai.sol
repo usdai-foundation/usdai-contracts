@@ -44,6 +44,8 @@ interface IUSDai is IERC20 {
 
     /**
      * @notice Rate tier
+     * @param rate Rate
+     * @param threshold Threshold
      */
     struct RateTier {
         uint256 rate;
@@ -203,8 +205,8 @@ interface IUSDai is IERC20 {
     /**
      * @notice Withdraw
      * @param withdrawToken Withdraw token
-     * @param usdaiAmount USD amount
-     * @param withdrawAmountMinimum Withdraw amount minimum
+     * @param usdaiAmount USDai amount
+     * @param withdrawAmountMinimum Minimum withdraw amount
      * @param recipient Recipient
      * @param data Data (for swap adapter)
      * @return Withdraw amount
@@ -224,7 +226,6 @@ interface IUSDai is IERC20 {
     /**
      * @notice Harvest base yield
      * @return USDai amount
-     *
      */
     function harvest() external returns (uint256);
 
@@ -235,9 +236,9 @@ interface IUSDai is IERC20 {
     /**
      * @notice Set blacklist
      * @param account Account
-     * @param isBlacklisted Is blacklisted
+     * @param blacklisted Blacklisted
      */
-    function setBlacklist(address account, bool isBlacklisted) external;
+    function setBlacklist(address account, bool blacklisted) external;
 
     /*------------------------------------------------------------------------*/
     /* Pause Admin API */

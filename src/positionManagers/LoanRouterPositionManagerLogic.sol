@@ -77,7 +77,7 @@ library LoanRouterPositionManagerLogic {
     /*------------------------------------------------------------------------*/
 
     /**
-     * @notice Validate hook context (V2 loan terms)
+     * @notice Validate hook context
      * @param loanTerms Loan terms
      * @param trancheIndex Tranche index
      * @param loanRouter Loan router
@@ -107,7 +107,7 @@ library LoanRouterPositionManagerLogic {
         uint64 timestamp,
         uint64 lastRepaymentTimestamp
     ) internal {
-        /* Accrue unscaled interest */
+        /* Accrue scaled interest */
         accrual.accrued = accrual.accrued + accrual.rate * (block.timestamp - accrual.timestamp)
             - (oldAccrualRate * (timestamp - lastRepaymentTimestamp));
 
@@ -194,7 +194,7 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle loan originated hook (V2)
+     * @notice Handle loan originated hook
      * @param depositTimelockStorage Deposit timelock storage
      * @param loansStorage Loans storage
      * @param loanTerms Loan terms
@@ -249,7 +249,7 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle loan repayment hook (V2)
+     * @notice Handle loan repayment hook
      * @param depositsStorage Deposits storage
      * @param loansStorage Loans storage
      * @param loanTerms Loan terms
@@ -323,7 +323,7 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle loan refinanced hook (V2)
+     * @notice Handle loan refinanced hook
      * @param loansStorage Loans storage
      * @param oldLoanTerms Old loan terms
      * @param newLoanTerms New loan terms
@@ -391,7 +391,7 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle loan fee paid hook (V2)
+     * @notice Handle loan fee paid hook
      * @param depositsStorage Deposits storage
      * @param loanTerms Loan terms
      * @param fee Fee paid
@@ -418,7 +418,7 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle loan liquidated hook (V2)
+     * @notice Handle loan liquidated hook
      * @param loansStorage Loans storage
      * @param loanTerms Loan terms
      * @param loanTermsHash Loan terms hash
@@ -452,7 +452,7 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle loan collateral liquidated hook (V2)
+     * @notice Handle loan collateral liquidated hook
      * @param depositsStorage Deposits storage
      * @param loansStorage Loans storage
      * @param loanTerms Loan terms

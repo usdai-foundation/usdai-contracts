@@ -39,7 +39,7 @@ abstract contract StakedUSDaiStorage {
         0x407fc66dcc0b10c2a8ec69f9095c4cd702e9ed0fb1a7e0f6b6f65bd03e776100;
 
     /**
-     * @notice Redemption status storage location
+     * @notice Redemption state storage location
      * @dev keccak256(abi.encode(uint256(keccak256("stakedUSDai.redemptionState_")) - 1)) & ~bytes32(uint256(0xff));
      */
     bytes32 private constant REDEMPTION_STATE_STORAGE_LOCATION =
@@ -71,7 +71,7 @@ abstract contract StakedUSDaiStorage {
     }
 
     /**
-     * @custom:storage-location erc7201:stakedUSDai.redemptionState
+     * @custom:storage-location erc7201:stakedUSDai.redemptionState_
      * @param index Current redemption index
      * @param head Head of the redemption queue
      * @param tail Tail of the redemption queue
@@ -160,12 +160,12 @@ abstract contract StakedUSDaiStorage {
             $.slot := IS_OPERATOR_STORAGE_LOCATION
         }
     }
+
     /**
      * @notice Get reference to ERC-7201 redemption state storage
      *
      * @return $ Reference to redemption state storage
      */
-
     function _getRedemptionStateStorage() internal pure returns (RedemptionState storage $) {
         assembly {
             $.slot := REDEMPTION_STATE_STORAGE_LOCATION

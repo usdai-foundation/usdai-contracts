@@ -99,6 +99,11 @@ abstract contract LoanRouterPositionManager is
 
     /**
      * @custom:storage-location erc7201:stakedUSDai.loans
+     * @param currencyTokens Currency tokens set (deprecated)
+     * @param repaymentBalances Repayment balances per currency token (deprecated)
+     * @param pendingBalances Pending loan balances per currency token
+     * @param interestAccruals Interest accruals per currency token
+     * @param loan Loan state by loan terms hash
      */
     struct Loans {
         EnumerableSet.AddressSet currencyTokens;

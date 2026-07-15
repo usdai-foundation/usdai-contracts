@@ -44,22 +44,22 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
     address internal immutable _endpoint;
 
     /**
-     * @notice USDai contract on the destination chain
+     * @notice USDai contract
      */
     IUSDai internal immutable _usdai;
 
     /**
-     * @notice USDai adapter on the destination chain
+     * @notice USDai adapter
      */
     IOFT internal immutable _usdaiOAdapter;
 
     /**
-     * @notice StakedUSDai contract on the destination chain
+     * @notice StakedUSDai contract
      */
     IStakedUSDai internal immutable _stakedUsdai;
 
     /**
-     * @notice StakedUSDai adapter on the destination chain
+     * @notice StakedUSDai adapter
      */
     IOFT internal immutable _stakedUsdaiOAdapter;
 
@@ -198,7 +198,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
                     /* Emit the deposit event */
                     emit ComposerDeposit(sendParam.dstEid, depositToken, to, depositAmount, usdaiAmount);
                 } catch (bytes memory reason) {
-                    /* Transfer the usdai to owner */
+                    /* Transfer the USDai to recipient */
                     _usdai.transfer(to, usdaiAmount);
 
                     /* Emit the failed action event */
@@ -267,7 +267,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
                     /* Update the sendParam with the staked USDai amount */
                     sendParam.amountLD = susdaiAmount;
 
-                    /* Send the staked USDai back to source chain */
+                    /* Send the staked USDai to destination chain */
                     try _stakedUsdaiOAdapter.send{value: nativeFee}(
                         sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(to)
                     ) {
@@ -276,7 +276,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
                             sendParam.dstEid, depositToken, to, depositAmount, usdaiAmount, susdaiAmount
                         );
                     } catch (bytes memory reason) {
-                        /* Transfer the staked USDai to owner */
+                        /* Transfer the staked USDai to recipient */
                         IERC20(address(_stakedUsdai)).transfer(to, susdaiAmount);
 
                         /* Emit the failed action event */
@@ -355,7 +355,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
         /* Get the destination address */
         address to = address(uint160(uint256(sendParam.to)));
 
-        /* Validate the deposit token is USDai */
+        /* Validate the deposit token is USDai and recipient is not blacklisted */
         if (depositToken != address(_usdai)) {
             _refund(IERC20(depositToken), to, depositAmount, "Stake", "Invalid deposit token");
 
@@ -381,14 +381,14 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
                 /* Update the sendParam with the staked USDai amount */
                 sendParam.amountLD = susdaiAmount;
 
-                /* Send the staked USDai back to source chain */
+                /* Send the staked USDai to destination chain */
                 try _stakedUsdaiOAdapter.send{value: nativeFee}(
                     sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(to)
                 ) {
                     /* Emit the stake event */
                     emit ComposerStake(sendParam.dstEid, to, depositAmount, susdaiAmount);
                 } catch (bytes memory reason) {
-                    /* Transfer the staked USDai to owner */
+                    /* Transfer the staked USDai to recipient */
                     IERC20(address(_stakedUsdai)).transfer(to, susdaiAmount);
 
                     /* Emit the failed action event */
@@ -433,7 +433,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
     /*------------------------------------------------------------------------*/
 
     /**
-     * @notice Compose a message to be sent to the destination chain
+     * @notice Incoming composed message handler
      * @param from Address of the sender
      * @param message Message
      */

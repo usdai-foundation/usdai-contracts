@@ -171,7 +171,7 @@ library RedemptionLogic {
      * @param redemptionState_ Redemption state
      * @param amount Amount to withdraw
      * @param controller Controller address
-     * @return Amount withdrawn
+     * @return Shares redeemed
      */
     function _withdraw(
         StakedUSDaiStorage.RedemptionState storage redemptionState_,
@@ -207,7 +207,7 @@ library RedemptionLogic {
             remainingAmount -= amountToWithdraw;
             shares += sharesToRedeem;
 
-            /* If redemption is fully serviced and all shares has been redeemed, */
+            /* If redemption is fully serviced and all shares have been redeemed, */
             /* remove redemption ID */
             if (redemption_.pendingShares == 0 && redemption_.redeemableShares == 0) {
                 redemptionState_.redemptionIds[controller].remove(redemptionIds[i]);
@@ -264,7 +264,7 @@ library RedemptionLogic {
             remainingShares -= sharesToRedeem;
             amount += amountToWithdraw;
 
-            /* If redemption is fully serviced and all shares has been redeemed, */
+            /* If redemption is fully serviced and all shares have been redeemed, */
             /* remove redemption ID */
             if (redemption_.pendingShares == 0 && redemption_.withdrawableAmount == 0) {
                 redemptionState_.redemptionIds[controller].remove(redemptionIds[i]);

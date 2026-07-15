@@ -84,9 +84,8 @@ interface IOUSDaiUtility {
     /**
      * @notice Composer deposit and stake event
      * @param dstEid Destination chain EID
-     * @param depositToken Token to deposit
-     * @param recipient Recipient address
      * @param depositToken Deposit token
+     * @param recipient Recipient address
      * @param depositAmount Amount of deposit token
      * @param usdaiAmount Amount of USDai received
      * @param susdaiAmount Amount of Staked USDai received

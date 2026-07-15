@@ -23,7 +23,7 @@ interface IStakedUSDai is IBasePositionManager {
     error InvalidCaller();
 
     /**
-     * @notice Invalid redemption status
+     * @notice Invalid redemption state
      */
     error InvalidRedemptionState();
 
@@ -134,7 +134,8 @@ interface IStakedUSDai is IBasePositionManager {
     /**
      * @notice Get redemption
      * @param redemptionId Redemption ID
-     * @return Redemption and shares ahead
+     * @return Redemption
+     * @return Shares ahead
      */
     function redemption(
         uint256 redemptionId
