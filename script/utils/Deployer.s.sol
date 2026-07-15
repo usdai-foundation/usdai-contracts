@@ -26,7 +26,6 @@ contract Deployer is BaseScript {
         address USDai;
         address stakedUSDai;
         address swapAdapter;
-        address priceOracle;
         address baseYieldEscrow;
         address oAdapterUSDai;
         address oAdapterStakedUSDai;
@@ -111,7 +110,6 @@ contract Deployer is BaseScript {
         json = stdJson.serialize("", "USDai", _deployment.USDai);
         json = stdJson.serialize("", "StakedUSDai", _deployment.stakedUSDai);
         json = stdJson.serialize("", "SwapAdapter", _deployment.swapAdapter);
-        json = stdJson.serialize("", "PriceOracle", _deployment.priceOracle);
         json = stdJson.serialize("", "BaseYieldEscrow", _deployment.baseYieldEscrow);
         json = stdJson.serialize("", "OAdapterUSDai", _deployment.oAdapterUSDai);
         json = stdJson.serialize("", "OAdapterStakedUSDai", _deployment.oAdapterStakedUSDai);
@@ -158,13 +156,6 @@ contract Deployer is BaseScript {
             _deployment.swapAdapter = instance;
         } catch {
             console.log("Could not parse SwapAdapter");
-        }
-
-        /* Deserialize PriceOracle */
-        try vm.parseJsonAddress(json, ".PriceOracle") returns (address instance) {
-            _deployment.priceOracle = instance;
-        } catch {
-            console.log("Could not parse PriceOracle");
         }
 
         /* Deserialize BaseYieldEscrow */

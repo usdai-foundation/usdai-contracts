@@ -59,19 +59,15 @@ interface ILoanRouterPositionManager {
 
     /**
      * @notice Loan repayment deposited
-     * @param currencyToken Currency token
      * @param depositAmount Deposit amount
-     * @param usdaiDepositAmount USDai deposit amount
      */
-    event LoanRepaymentDeposited(address indexed currencyToken, uint256 depositAmount, uint256 usdaiDepositAmount);
+    event LoanRepaymentDeposited(uint256 depositAmount);
 
     /**
      * @notice Admin fee withdrawn
-     * @param currencyToken Currency token
      * @param adminFeeAmount Admin fee amount
-     * @param usdaiDepositAmount USDai deposit amount
      */
-    event AdminFeeWithdrawn(address indexed currencyToken, uint256 adminFeeAmount, uint256 usdaiDepositAmount);
+    event AdminFeeWithdrawn(uint256 adminFeeAmount);
 
     /*------------------------------------------------------------------------*/
     /* Getter */
@@ -93,13 +89,10 @@ interface ILoanRouterPositionManager {
 
     /**
      * @notice Repayment balances
-     * @param currencyToken Currency token
      * @return Repayment balance
      * @return Admin fee balance
      */
-    function repaymentBalances(
-        address currencyToken
-    ) external view returns (uint256, uint256);
+    function repaymentBalances() external view returns (uint256, uint256);
 
     /*------------------------------------------------------------------------*/
     /* Permissioned API */
@@ -139,29 +132,17 @@ interface ILoanRouterPositionManager {
 
     /**
      * @notice Deposit loan repayment
-     * @param currencyToken Currency token
      * @param depositAmount Deposit amount
-     * @param usdaiAmountMinimum Minimum USDai amount
-     * @param data Swap data
      */
     function depositLoanRepayment(
-        address currencyToken,
-        uint256 depositAmount,
-        uint256 usdaiAmountMinimum,
-        bytes calldata data
+        uint256 depositAmount
     ) external;
 
     /**
      * @notice Withdraw admin fee
-     * @param currencyToken Currency token
      * @param adminFeeAmount Admin fee amount
-     * @param usdaiAmountMinimum Minimum USDai amount
-     * @param data Swap data
      */
     function withdrawAdminFee(
-        address currencyToken,
-        uint256 adminFeeAmount,
-        uint256 usdaiAmountMinimum,
-        bytes calldata data
+        uint256 adminFeeAmount
     ) external;
 }

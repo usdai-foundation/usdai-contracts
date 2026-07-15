@@ -72,7 +72,7 @@ contract MockStakedUSDai is
         address loanRouter_,
         address bridgeAdapter_
     )
-        StakedUSDaiStorage(usdai_, address(0), address(0), uint64(block.timestamp), bridgeAdapter_)
+        StakedUSDaiStorage(usdai_, address(0), uint64(block.timestamp), bridgeAdapter_)
         BasePositionManager(0)
         LoanRouterPositionManager(loanRouter_, 0)
     {

@@ -3,10 +3,8 @@ pragma solidity 0.8.29;
 
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
-import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 import {IUSDai} from "../interfaces/IUSDai.sol";
 
 import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
@@ -40,12 +38,6 @@ library LoanRouterPositionManagerLogic {
     /*------------------------------------------------------------------------*/
     /* Errors */
     /*------------------------------------------------------------------------*/
-
-    /**
-     * @notice Unsupported currency
-     * @param currency Currency address
-     */
-    error UnsupportedCurrency(address currency);
 
     /**
      * @notice Invalid caller
@@ -105,22 +97,6 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Validate currency token
-     * @param currencyToken Currency token address
-     * @param usdai USDai
-     * @param priceOracle Price oracle
-     */
-    function _validateCurrencyToken(address currencyToken, IUSDai usdai, IPriceOracle priceOracle) internal view {
-        /* Validate currency token is either USDai, or supported by price oracle */
-        if (
-            currencyToken != address(usdai) && currencyToken != usdai.baseToken()
-                && !priceOracle.supportedToken(currencyToken)
-        ) {
-            revert UnsupportedCurrency(currencyToken);
-        }
-    }
-
-    /**
      * @notice Update accrued interest and timestamp
      * @param accrual Accrual
      * @param oldAccrualRate Old accrual rate
@@ -142,64 +118,32 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Get value in USDai
-     * @param usdai USDai
-     * @param priceOracle Price oracle
-     * @param currencyToken Currency token address
-     * @param amount Amount of currency token
-     * @return Value in USDai
-     */
-    function _value(
-        IUSDai usdai,
-        IPriceOracle priceOracle,
-        address currencyToken,
-        uint256 amount
-    ) internal view returns (uint256) {
-        /* If currency token is USDai, return amount */
-        if (currencyToken == address(usdai)) return amount;
-
-        /* If currency token is base token, return scaled amount */
-        if (currencyToken == usdai.baseToken()) {
-            return amount * (10 ** (18 - IERC20Metadata(currencyToken).decimals()));
-        }
-
-        /* Get price of currency token in terms of USDai */
-        uint256 price = priceOracle.price(currencyToken);
-        return Math.mulDiv(amount, price, 10 ** IERC20Metadata(currencyToken).decimals());
-    }
-
-    /**
      * @notice Handle interest accrued hook
      * @param loansStorage Loans storage
      * @param usdai USDai
-     * @param token Token address
      * @param interest Interest amount
      * @param adminFeeRate Admin fee rate
      */
     function _escrowInterestAccrued(
         LoanRouterPositionManager.Loans storage loansStorage,
-        IUSDai usdai,
-        address token,
+        address usdai,
         uint256 interest,
         uint256 adminFeeRate
     ) internal {
-        /* Validate currency token */
-        if (token != address(usdai)) revert UnsupportedCurrency(token);
-
         /* Do nothing if interest is 0 */
         if (interest == 0) return;
 
         /* Register currency token */
-        loansStorage.currencyTokens.add(token);
+        loansStorage.currencyTokens.add(usdai);
 
         /* Compute admin fee amount */
         uint256 adminFee = interest * adminFeeRate / BASIS_POINTS_SCALE;
 
         /* Update repayment balances */
-        loansStorage.repaymentBalances[token].adminFee += adminFee;
+        loansStorage.repaymentBalances[usdai].adminFee += adminFee;
 
         /* Update repayment balance with interest amount minus admin fee */
-        loansStorage.repaymentBalances[token].repayment += interest - adminFee;
+        loansStorage.repaymentBalances[usdai].repayment += interest - adminFee;
     }
 
     /*------------------------------------------------------------------------*/
@@ -210,44 +154,22 @@ library LoanRouterPositionManagerLogic {
      * @notice Get loan router balances
      * @param loansStorage Loans storage
      * @param usdai USDai
-     * @param priceOracle Price oracle
      * @return Claimable loan balance
      * @return Pending loan balance
      * @return Accrued loan interest balance
      */
     function loanRouterBalances(
         LoanRouterPositionManager.Loans storage loansStorage,
-        IUSDai usdai,
-        IPriceOracle priceOracle
+        address usdai
     ) external view returns (uint256, uint256, uint256) {
-        uint256 totalRepaymentBalance;
-        uint256 totalPendingBalance;
-        uint256 totalAccruedBalance;
-        for (uint256 i; i < loansStorage.currencyTokens.length(); i++) {
-            /* Get currency token */
-            address currencyToken = loansStorage.currencyTokens.at(i);
+        /* Get USDai accrual */
+        LoanRouterPositionManager.Accrual storage accrual = loansStorage.interestAccruals[usdai];
 
-            /* Get repayment balance in terms of USDai */
-            totalRepaymentBalance +=
-                _value(usdai, priceOracle, currencyToken, loansStorage.repaymentBalances[currencyToken].repayment);
-
-            /* Get pending balances in terms of USDai */
-            totalPendingBalance +=
-                _value(usdai, priceOracle, currencyToken, loansStorage.pendingBalances[currencyToken]);
-
-            /* Get currency token accrual */
-            LoanRouterPositionManager.Accrual storage accrual = loansStorage.interestAccruals[currencyToken];
-
-            /* Compute unscaled accrued interest */
-            uint256 accrued =
-                (accrual.accrued + accrual.rate * (block.timestamp - accrual.timestamp)) / FIXED_POINT_SCALE;
-
-            /* Get accrued value in terms of USDai */
-            totalAccruedBalance += _value(usdai, priceOracle, currencyToken, accrued);
-        }
+        /* Compute unscaled accrued interest */
+        uint256 accrued = (accrual.accrued + accrual.rate * (block.timestamp - accrual.timestamp)) / FIXED_POINT_SCALE;
 
         /* Return loan router balance */
-        return (totalRepaymentBalance, totalPendingBalance, totalAccruedBalance);
+        return (loansStorage.repaymentBalances[usdai].repayment, loansStorage.pendingBalances[usdai], accrued);
     }
 
     /*------------------------------------------------------------------------*/
@@ -258,33 +180,26 @@ library LoanRouterPositionManagerLogic {
      * @notice Handle deposit timelock withdrawn hook
      * @param loansStorage Loans storage
      * @param usdai USDai
-     * @param priceOracle Price oracle
      * @param depositTimelock Deposit timelock
-     * @param token Token address
      * @param refundedAmount Refunded amount
      */
     function depositWithdrawn(
         LoanRouterPositionManager.Loans storage loansStorage,
-        IUSDai usdai,
-        IPriceOracle priceOracle,
+        address usdai,
         address depositTimelock,
-        address token,
         uint256 refundedAmount
     ) external {
         /* Validate caller is deposit timelock */
         if (msg.sender != depositTimelock) revert InvalidCaller();
 
-        /* Validate currency token */
-        _validateCurrencyToken(token, usdai, priceOracle);
-
         /* Do nothing if amount is 0 */
         if (refundedAmount == 0) return;
 
-        /* Register currency token */
-        loansStorage.currencyTokens.add(token);
+        /* Register USDai */
+        loansStorage.currencyTokens.add(usdai);
 
         /* Update repayment balance with refunded amount */
-        loansStorage.repaymentBalances[token].repayment += refundedAmount;
+        loansStorage.repaymentBalances[usdai].repayment += refundedAmount;
     }
 
     /**
@@ -295,7 +210,6 @@ library LoanRouterPositionManagerLogic {
      * @param loanTermsHash Loan terms hash
      * @param trancheIndex Tranche index
      * @param usdai USDai
-     * @param priceOracle Price oracle
      * @param loanRouter Loan router
      */
     function loanOriginated(
@@ -304,15 +218,14 @@ library LoanRouterPositionManagerLogic {
         ILoanRouterV2.LoanTermsV2 calldata loanTerms,
         bytes32 loanTermsHash,
         uint8 trancheIndex,
-        IUSDai usdai,
-        IPriceOracle priceOracle,
+        address usdai,
         address loanRouter
     ) external {
         /* Validate hook context */
         _validateHookContext(loanTerms, trancheIndex, loanRouter);
 
-        /* Validate currency token is either USDai, or supported by price oracle */
-        _validateCurrencyToken(loanTerms.currencyToken, usdai, priceOracle);
+        /* Validate USDai */
+        if (loanTerms.currencyToken != usdai) revert InvalidCurrencyToken();
 
         /* Subtract deposited USDai amount from deposit timelock balance */
         depositTimelockStorage.balance -= depositTimelockStorage.amounts[loanTermsHash];
@@ -488,6 +401,8 @@ library LoanRouterPositionManagerLogic {
      * @param loansStorage Loans storage
      * @param loanTerms Loan terms
      * @param fee Fee paid
+     * @param usdai USDai
+     * @param loanRouter Loan router
      */
     function loanFeePaid(
         LoanRouterPositionManager.Loans storage loansStorage,
@@ -495,10 +410,14 @@ library LoanRouterPositionManagerLogic {
         bytes32,
         uint8,
         uint256 fee,
+        address usdai,
         address loanRouter
     ) external {
         /* Validate caller is loan router */
         if (msg.sender != loanRouter) revert InvalidCaller();
+
+        /* Validate loan currency token is USDai */
+        if (loanTerms.currencyToken != usdai) revert InvalidCurrencyToken();
 
         /* Update repayment balances */
         loansStorage.repaymentBalances[loanTerms.currencyToken].repayment += fee;
@@ -594,11 +513,11 @@ library LoanRouterPositionManagerLogic {
      */
     function escrowCancelled(
         LoanRouterPositionManager.Loans storage loansStorage,
-        IUSDai usdai,
+        address usdai,
         uint256 interest,
         uint256 adminFeeRate
     ) external {
-        _escrowInterestAccrued(loansStorage, usdai, address(usdai), interest, adminFeeRate);
+        _escrowInterestAccrued(loansStorage, usdai, interest, adminFeeRate);
     }
 
     /**
@@ -606,22 +525,20 @@ library LoanRouterPositionManagerLogic {
      * @param loansStorage Loans storage
      * @param usdai USDai
      * @param escrowTimelock Escrow timelock
-     * @param token Token address
      * @param interest Interest amount
      * @param adminFeeRate Admin fee rate
      */
     function escrowWithdrawn(
         LoanRouterPositionManager.Loans storage loansStorage,
-        IUSDai usdai,
+        address usdai,
         address escrowTimelock,
-        address token,
         uint256 interest,
         uint256 adminFeeRate
     ) external {
         /* Validate caller is escrow timelock */
         if (msg.sender != escrowTimelock) revert InvalidCaller();
 
-        _escrowInterestAccrued(loansStorage, usdai, token, interest, adminFeeRate);
+        _escrowInterestAccrued(loansStorage, usdai, interest, adminFeeRate);
     }
 
     /**
@@ -696,91 +613,47 @@ library LoanRouterPositionManagerLogic {
      * @param depositsStorage Deposits storage
      * @param loansStorage Loans storage
      * @param usdai USDai
-     * @param currencyToken Currency token address
      * @param depositAmount Deposit amount
-     * @param usdaiAmountMinimum Minimum USDai amount
-     * @param data Swap data
-     * @return USDai deposit amount
      */
     function depositLoanRepayment(
         StakedUSDaiStorage.Deposits storage depositsStorage,
         LoanRouterPositionManager.Loans storage loansStorage,
-        IUSDai usdai,
-        address currencyToken,
-        uint256 depositAmount,
-        uint256 usdaiAmountMinimum,
-        bytes calldata data
-    ) external returns (uint256) {
+        address usdai,
+        uint256 depositAmount
+    ) external {
         /* Validate repayment balance */
-        if (depositAmount > loansStorage.repaymentBalances[currencyToken].repayment) {
+        if (depositAmount > loansStorage.repaymentBalances[usdai].repayment) {
             revert PositionManager.InsufficientBalance();
         }
 
         /* Update repayment balances */
-        loansStorage.repaymentBalances[currencyToken].repayment -= depositAmount;
-
-        /* Get USDai deposit amount */
-        uint256 usdaiDepositAmount;
-        if (currencyToken == address(usdai)) {
-            usdaiDepositAmount = depositAmount;
-        } else {
-            /* Approve currency token */
-            IERC20(currencyToken).forceApprove(address(usdai), depositAmount);
-
-            /* Swap currency token to USDai */
-            usdaiDepositAmount = usdai.deposit(currencyToken, depositAmount, usdaiAmountMinimum, address(this), data);
-        }
+        loansStorage.repaymentBalances[usdai].repayment -= depositAmount;
 
         /* Update deposits balance */
-        depositsStorage.balance += usdaiDepositAmount;
-
-        /* Return USDai deposit amount */
-        return usdaiDepositAmount;
+        depositsStorage.balance += depositAmount;
     }
 
     /**
      * @notice Withdraw admin fee
      * @param loansStorage Loans storage
      * @param usdai USDai
-     * @param currencyToken Currency token address
      * @param adminFeeAmount Admin fee amount
-     * @param usdaiAmountMinimum Minimum USDai amount
-     * @param data Swap data
-     * @return USDai deposit amount
      */
     function withdrawAdminFee(
         LoanRouterPositionManager.Loans storage loansStorage,
-        IUSDai usdai,
+        address usdai,
         address adminFeeRecipient,
-        address currencyToken,
-        uint256 adminFeeAmount,
-        uint256 usdaiAmountMinimum,
-        bytes calldata data
-    ) external returns (uint256) {
+        uint256 adminFeeAmount
+    ) external {
         /* Validate admin fee balance */
-        if (adminFeeAmount > loansStorage.repaymentBalances[currencyToken].adminFee) {
+        if (adminFeeAmount > loansStorage.repaymentBalances[usdai].adminFee) {
             revert PositionManager.InsufficientBalance();
         }
 
         /* Update admin fee balance */
-        loansStorage.repaymentBalances[currencyToken].adminFee -= adminFeeAmount;
-
-        /* Get USDai deposit amount */
-        uint256 usdaiDepositAmount;
-        if (currencyToken == address(usdai)) {
-            usdaiDepositAmount = adminFeeAmount;
-        } else {
-            /* Approve currency token */
-            IERC20(currencyToken).forceApprove(address(usdai), adminFeeAmount);
-
-            /* Swap currency token to USDai */
-            usdaiDepositAmount = usdai.deposit(currencyToken, adminFeeAmount, usdaiAmountMinimum, address(this), data);
-        }
+        loansStorage.repaymentBalances[usdai].adminFee -= adminFeeAmount;
 
         /* Transfer USDai to admin fee recipient */
-        usdai.transfer(adminFeeRecipient, usdaiDepositAmount);
-
-        /* Return USDai deposit amount */
-        return usdaiDepositAmount;
+        IUSDai(usdai).transfer(adminFeeRecipient, adminFeeAmount);
     }
 }

@@ -8,7 +8,6 @@ import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.so
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 import {UniswapV3SwapAdapter} from "src/swapAdapters/UniswapV3SwapAdapter.sol";
-import {ChainlinkPriceOracle} from "src/oracles/ChainlinkPriceOracle.sol";
 import {USDai} from "src/USDai.sol";
 import {StakedUSDai} from "src/StakedUSDai.sol";
 import {Deployer} from "./utils/Deployer.s.sol";
@@ -17,20 +16,12 @@ contract DeployTestEnvironment is Deployer {
     function run(
         address baseToken,
         address swapRouter,
-        address sequencerUptimeFeed,
-        address baseTokenPriceFeed,
         address loanRouterV2,
-        address[] calldata tokens,
-        address[] calldata priceFeeds
-    ) public broadcast useDeployment returns (address, address, address, address) {
+        address[] calldata tokens
+    ) public broadcast useDeployment returns (address, address, address) {
         // Deploy UniswapV3SwapAdapter
         UniswapV3SwapAdapter swapAdapter = new UniswapV3SwapAdapter(baseToken, swapRouter, tokens);
         console.log("UniswapV3SwapAdapter", address(swapAdapter));
-
-        // Deploy ChainlinkPriceOracle
-        ChainlinkPriceOracle priceOracle =
-            new ChainlinkPriceOracle(sequencerUptimeFeed, baseTokenPriceFeed, tokens, priceFeeds, msg.sender);
-        console.log("ChainlinkPriceOracle", address(priceOracle));
 
         // Deploy USDai implemetation
         USDai USDaiImpl = new USDai(
@@ -47,7 +38,6 @@ contract DeployTestEnvironment is Deployer {
         // Deploy StakedUSDai
         StakedUSDai stakedUSDaiImpl = new StakedUSDai(
             address(USDai_),
-            address(priceOracle),
             loanRouterV2,
             msg.sender,
             uint64(block.timestamp),
@@ -68,10 +58,9 @@ contract DeployTestEnvironment is Deployer {
 
         // Log deployment
         _deployment.swapAdapter = address(swapAdapter);
-        _deployment.priceOracle = address(priceOracle);
         _deployment.USDai = address(USDai_);
         _deployment.stakedUSDai = address(stakedUSDai);
 
-        return (address(swapAdapter), address(priceOracle), address(USDai_), address(stakedUSDai));
+        return (address(swapAdapter), address(USDai_), address(stakedUSDai));
     }
 }

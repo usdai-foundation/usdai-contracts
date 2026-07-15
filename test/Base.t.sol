@@ -26,11 +26,8 @@ import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouter
 import {USDai} from "src/USDai.sol";
 import {StakedUSDai} from "src/StakedUSDai.sol";
 import {BaseYieldEscrow} from "src/BaseYieldEscrow.sol";
-import {ChainlinkPriceOracle} from "src/oracles/ChainlinkPriceOracle.sol";
 import {UniswapV3SwapAdapter} from "src/swapAdapters/UniswapV3SwapAdapter.sol";
 import {IUSDai} from "src/interfaces/IUSDai.sol";
-
-import {TestPYUSDPriceFeed} from "../script/DeployTestPYUSDPriceFeed.s.sol";
 
 /**
  * @title Base test setup
@@ -128,10 +125,8 @@ abstract contract BaseTest is Test {
     IEscrowTimelock internal escrowTimelock;
     ILoanRouterV2 internal loanRouter;
     BaseYieldEscrow internal baseYieldEscrow;
-    ChainlinkPriceOracle internal priceOracle;
     IUSDai internal usdai;
     StakedUSDai internal stakedUsdai;
-    TestPYUSDPriceFeed internal testPYUSDPriceFeed;
 
     function setUp() public virtual {
         vm.createSelectFork(vm.envString("ARBITRUM_RPC_URL"));
@@ -158,8 +153,6 @@ abstract contract BaseTest is Test {
 
         deployBaseYieldEscrow();
         deployUniswapV3SwapAdapter();
-        deployTestPYUSDPriceFeed();
-        deployPriceOracle();
         deployUsdai();
 
         deployCollateralTimelock();
@@ -207,15 +200,6 @@ abstract contract BaseTest is Test {
         /* Deploy Uniswap V3 swap adapter */
         uniswapV3SwapAdapter =
             new UniswapV3SwapAdapter(address(PYUSD), address(UniswapPoolHelpers.UNISWAP_ROUTER), whitelistedTokens);
-
-        vm.stopPrank();
-    }
-
-    function deployTestPYUSDPriceFeed() internal {
-        vm.startPrank(users.deployer);
-
-        /* Deploy mock m chainlink oracle */
-        testPYUSDPriceFeed = new TestPYUSDPriceFeed();
 
         vm.stopPrank();
     }
@@ -370,32 +354,12 @@ abstract contract BaseTest is Test {
         vm.stopPrank();
     }
 
-    function deployPriceOracle() internal {
-        vm.startPrank(users.deployer);
-
-        /* Deploy staked usdai implementation */
-        address[] memory tokens = new address[](3);
-        tokens[0] = address(WETH);
-        tokens[1] = address(USDT);
-        tokens[2] = address(USDC);
-        address[] memory priceFeeds = new address[](3);
-        priceFeeds[0] = address(WETH_PRICE_FEED);
-        priceFeeds[1] = address(USDT_PRICE_FEED);
-        priceFeeds[2] = address(USDC_PRICE_FEED);
-        priceOracle = new ChainlinkPriceOracle(
-            SEQUENCER_UPTIME_FEED, address(testPYUSDPriceFeed), tokens, priceFeeds, users.admin
-        );
-
-        vm.stopPrank();
-    }
-
     function deployStakedUsdai() internal {
         vm.startPrank(users.deployer);
 
         /* Deploy staked usdai implementation */
         StakedUSDai stakedUsdaiImpl = new StakedUSDai(
             address(usdai),
-            address(priceOracle),
             address(loanRouter),
             address(users.admin),
             uint64(block.timestamp),

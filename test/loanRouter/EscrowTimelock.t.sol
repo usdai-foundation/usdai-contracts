@@ -148,7 +148,7 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         vm.prank(users.manager);
         stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
 
-        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances(address(usdai));
+        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances();
         assertApproxEqAbs(repayment, expectedRepayment, 1);
         assertApproxEqAbs(adminFee, expectedAdminFee, 1);
     }
@@ -158,7 +158,7 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         vm.prank(users.manager);
         stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
 
-        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances(address(usdai));
+        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances();
         assertEq(repayment, 0, "no interest should accrue with zero elapsed time");
         assertEq(adminFee, 0, "no admin fee without interest");
     }
@@ -196,7 +196,7 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         vm.prank(address(loanRouter));
         escrowTimelock.withdraw(LOAN_HASH, address(usdai), DEPOSIT_AMOUNT);
 
-        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances(address(usdai));
+        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances();
         assertApproxEqAbs(repayment, expectedRepayment, 1);
         assertApproxEqAbs(adminFee, expectedAdminFee, 1);
     }
@@ -206,7 +206,7 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         vm.prank(address(loanRouter));
         escrowTimelock.withdraw(LOAN_HASH, address(usdai), DEPOSIT_AMOUNT);
 
-        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances(address(usdai));
+        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances();
         assertEq(repayment, 0, "no interest with zero elapsed time");
         assertEq(adminFee, 0, "no admin fee without interest");
     }

@@ -19,7 +19,6 @@ contract UpgradeStakedUSDai is Deployer {
         // Deploy StakedUSDai implemetation
         StakedUSDai stakedUSDaiImpl = new StakedUSDai(
             _deployment.USDai,
-            _deployment.priceOracle,
             loanRouterV2,
             adminFeeRecipient,
             _deployment.genesisTimestamp,
