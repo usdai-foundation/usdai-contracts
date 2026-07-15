@@ -72,13 +72,6 @@ interface IStakedUSDai is IBasePositionManager {
     /*------------------------------------------------------------------------*/
 
     /**
-     * @notice Migrated event
-     * @param description Description
-     * @param data Data
-     */
-    event Migrated(string description, bytes data);
-
-    /**
      * @notice Redemption Processed
      * @param redemptionId Redemption ID
      * @param controller Controller

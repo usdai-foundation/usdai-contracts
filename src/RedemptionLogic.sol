@@ -115,36 +115,6 @@ library RedemptionLogic {
         return (amount, shares);
     }
 
-    /**
-     * @notice Get redemption shares ready
-     * @param redemptionState_ Redemption state
-     * @return Redemption shares ready
-     */
-    function _redemptionSharesReady(
-        StakedUSDaiStorage.RedemptionState storage redemptionState_
-    ) external view returns (uint256) {
-        /* Get head redemption ID */
-        uint256 head = redemptionState_.head;
-
-        /* Scan redemptions */
-        uint256 shares;
-        while (head != 0) {
-            /* Get redemption */
-            IStakedUSDai.Redemption memory redemption_ = redemptionState_.redemptions[head];
-
-            /* Stop if redemption timestamp is past redemption window */
-            if (redemption_.redemptionTimestamp >= block.timestamp) break;
-
-            /* Add pending shares */
-            shares += redemption_.pendingShares;
-
-            /* Update head */
-            head = redemption_.next;
-        }
-
-        return shares;
-    }
-
     /*------------------------------------------------------------------------*/
     /* Helpers */
     /*------------------------------------------------------------------------*/

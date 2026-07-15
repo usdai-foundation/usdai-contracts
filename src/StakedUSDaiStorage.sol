@@ -11,8 +11,6 @@ import "./interfaces/IUSDai.sol";
  * @author USD.AI Foundation
  */
 abstract contract StakedUSDaiStorage {
-    using EnumerableSet for EnumerableSet.UintSet;
-
     /*------------------------------------------------------------------------*/
     /* Roles */
     /*------------------------------------------------------------------------*/

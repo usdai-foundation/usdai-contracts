@@ -352,17 +352,6 @@ contract USDai is
     }
 
     /**
-     * @notice Helper function to scale down a value, rounding up
-     * @param value Value
-     * @return Unscaled value rounded up
-     */
-    function _unscaleUp(
-        uint256 value
-    ) internal view returns (uint256) {
-        return (value + _scaleFactor - 1) / _scaleFactor;
-    }
-
-    /**
      * @notice Deposit
      * @param depositToken Deposit token
      * @param depositAmount Deposit amount

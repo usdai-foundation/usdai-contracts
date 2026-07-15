@@ -32,11 +32,6 @@ interface IOUSDaiUtility {
     error InvalidAddress();
 
     /**
-     * @notice Invalid deposit token
-     */
-    error InvalidDepositToken();
-
-    /**
      * @notice Unknown Action
      */
     error UnknownAction();

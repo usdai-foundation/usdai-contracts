@@ -23,11 +23,6 @@ interface IUSDai is IERC20 {
     error InvalidAmount();
 
     /**
-     * @notice Invalid decimals
-     */
-    error InvalidDecimals();
-
-    /**
      * @notice Blacklisted address
      * @param value Blacklisted address
      */
@@ -55,13 +50,6 @@ interface IUSDai is IERC20 {
     /*------------------------------------------------------------------------*/
     /* Events */
     /*------------------------------------------------------------------------*/
-
-    /**
-     * @notice Migrated event
-     * @param description Description
-     * @param data Data
-     */
-    event Migrated(string description, bytes data);
 
     /**
      * @notice Deposited event

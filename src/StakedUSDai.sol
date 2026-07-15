@@ -22,11 +22,9 @@ import "./RedemptionLogic.sol";
 import "./positionManagers/BasePositionManager.sol";
 import "./positionManagers/LoanRouterPositionManager.sol";
 
-import "./interfaces/IUSDai.sol";
 import "./interfaces/IStakedUSDai.sol";
 import "./interfaces/IERC7540.sol";
 import "./interfaces/IERC7575.sol";
-import "./interfaces/IBasePositionManager.sol";
 import "./interfaces/IMintableBurnable.sol";
 
 /**
