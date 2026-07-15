@@ -188,6 +188,13 @@ abstract contract LoanRouterPositionManager is
         );
     }
 
+    /**
+     * @inheritdoc ILoanRouterPositionManager
+     */
+    function accrualRate() external view returns (uint256) {
+        return _getLoansStorage().interestAccruals[address(_usdai)].rate;
+    }
+
     /*------------------------------------------------------------------------*/
     /* Internal helpers */
     /*------------------------------------------------------------------------*/

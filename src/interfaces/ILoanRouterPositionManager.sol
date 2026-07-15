@@ -94,6 +94,12 @@ interface ILoanRouterPositionManager {
      */
     function repaymentBalances() external view returns (uint256, uint256);
 
+    /**
+     * @notice Accrual rate
+     * @return Accrual rate
+     */
+    function accrualRate() external view returns (uint256);
+
     /*------------------------------------------------------------------------*/
     /* Permissioned API */
     /*------------------------------------------------------------------------*/

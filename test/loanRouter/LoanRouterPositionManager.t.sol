@@ -29,6 +29,31 @@ contract LoanRouterPositionManagerTest is BaseLoanRouterTest {
         stakedUsdai.depositLoanDepositTimelock(LOAN_HASH, DEPOSIT_AMOUNT, uint64(block.timestamp + 7 days));
     }
 
+    /**
+     * @notice Originate a loan by calling the onLoanOriginated hook directly under a loan
+     *         router prank, skipping the collateral timelock, deposit timelock, and fee model
+     *         since none of them affect the accrual rate accounting under test
+     * @param loanTermsHash Loan terms hash
+     * @param principal Principal amount in USDai
+     * @param rate Accrual rate per second scaled by 1e18
+     * @return loanTerms Loan terms used for origination
+     */
+    function _originateLoanDirect(
+        bytes32 loanTermsHash,
+        uint256 principal,
+        uint256 rate
+    ) internal returns (ILoanRouterV2.LoanTermsV2 memory loanTerms) {
+        // Build loan terms with StakedUSDai as the tranche lender
+        loanTerms = createLoanTerms(principal, collateralTokenIds, address(usdai));
+
+        // Set the accrual rate under test
+        loanTerms.trancheSpecs[0].rate = rate;
+
+        // Call the origination hook as the loan router
+        vm.prank(address(loanRouter));
+        stakedUsdai.onLoanOriginated(loanTerms, loanTermsHash, 0);
+    }
+
     /*------------------------------------------------------------------------*/
     /* Wiring */
     /*------------------------------------------------------------------------*/
@@ -44,6 +69,93 @@ contract LoanRouterPositionManagerTest is BaseLoanRouterTest {
         assertEq(repayment, 0, "repaymentBalance not 0");
         assertEq(pending, 0, "pendingBalance not 0");
         assertEq(accrued, 0, "accruedBalance not 0");
+        assertEq(stakedUsdai.accrualRate(), 0, "accrualRate not 0");
+    }
+
+    /*------------------------------------------------------------------------*/
+    /* accrualRate() */
+    /*------------------------------------------------------------------------*/
+
+    function test__AccrualRate_IncreasesOnLoanOriginated() public {
+        uint256 principal = 500_000 ether;
+
+        // Originate a loan at the fixed test rate
+        _originateLoanDirect(keccak256("loan-1"), principal, RATE_10_PCT);
+
+        // The pool rate equals the single loan's contribution
+        assertEq(stakedUsdai.accrualRate(), RATE_10_PCT * principal, "accrualRate wrong after origination");
+    }
+
+    function test__AccrualRate_SumsAcrossMultipleLoans() public {
+        uint256 principalOne = 500_000 ether;
+        uint256 principalTwo = 250_000 ether;
+
+        // Originate two loans at different rates and principals
+        _originateLoanDirect(keccak256("loan-1"), principalOne, RATE_10_PCT);
+        _originateLoanDirect(keccak256("loan-2"), principalTwo, GRACE_PERIOD_RATE);
+
+        // The pool rate equals the sum of both loans' contributions
+        assertEq(
+            stakedUsdai.accrualRate(),
+            RATE_10_PCT * principalOne + GRACE_PERIOD_RATE * principalTwo,
+            "accrualRate wrong across multiple loans"
+        );
+    }
+
+    function test__AccrualRate_ZeroOnFullRepayment() public {
+        uint256 principal = 500_000 ether;
+        bytes32 loanTermsHash = keccak256("loan-1");
+
+        // Originate a loan
+        ILoanRouterV2.LoanTermsV2 memory loanTerms = _originateLoanDirect(loanTermsHash, principal, RATE_10_PCT);
+
+        // Repay the loan in full
+        vm.prank(address(loanRouter));
+        stakedUsdai.onLoanRepayment(loanTerms, loanTermsHash, 0, 0, principal, 1_000 ether, 0);
+
+        // The pool rate returns to 0
+        assertEq(stakedUsdai.accrualRate(), 0, "accrualRate not 0 after full repayment");
+    }
+
+    function test__AccrualRate_ReflectsNewRateOnPartialRepayment() public {
+        uint256 principal = 500_000 ether;
+        uint256 principalRepaid = 200_000 ether;
+        bytes32 loanTermsHash = keccak256("loan-1");
+
+        // Originate a loan
+        ILoanRouterV2.LoanTermsV2 memory loanTerms = _originateLoanDirect(loanTermsHash, principal, RATE_10_PCT);
+
+        // Repay a portion of the principal, leaving the loan active
+        vm.prank(address(loanRouter));
+        stakedUsdai.onLoanRepayment(
+            loanTerms, loanTermsHash, 0, principal - principalRepaid, principalRepaid, 500 ether, 0
+        );
+
+        // The pool rate reflects the loan's new, lower balance
+        assertEq(
+            stakedUsdai.accrualRate(),
+            RATE_10_PCT * (principal - principalRepaid),
+            "accrualRate wrong after partial repayment"
+        );
+    }
+
+    function test__AccrualRate_DecreasesOnLiquidation() public {
+        uint256 principalOne = 500_000 ether;
+        uint256 principalTwo = 250_000 ether;
+        bytes32 loanTermsHashOne = keccak256("loan-1");
+        bytes32 loanTermsHashTwo = keccak256("loan-2");
+
+        // Originate two loans
+        ILoanRouterV2.LoanTermsV2 memory loanTermsOne =
+            _originateLoanDirect(loanTermsHashOne, principalOne, RATE_10_PCT);
+        _originateLoanDirect(loanTermsHashTwo, principalTwo, GRACE_PERIOD_RATE);
+
+        // Liquidate the first loan
+        vm.prank(address(loanRouter));
+        stakedUsdai.onLoanLiquidated(loanTermsOne, loanTermsHashOne, 0);
+
+        // The pool rate keeps only the second loan's contribution
+        assertEq(stakedUsdai.accrualRate(), GRACE_PERIOD_RATE * principalTwo, "accrualRate wrong after liquidation");
     }
 
     /*------------------------------------------------------------------------*/
