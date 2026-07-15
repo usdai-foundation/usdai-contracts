@@ -13,10 +13,10 @@ contract StakedUSDaiDepositTest is BaseTest {
 
         // User approves USDai to spend their USD
         vm.startPrank(users.normalUser1);
-        usd.approve(address(usdai), 10_000_000 ether);
+        PYUSD.approve(address(usdai), 10_000_000 ether);
 
         // User deposits USD into USDai
-        initialBalance = usdai.deposit(address(usd), 10_000_000 ether, 0, users.normalUser1);
+        initialBalance = usdai.deposit(10_000_000 ether, users.normalUser1);
 
         vm.stopPrank();
     }
@@ -91,8 +91,8 @@ contract StakedUSDaiDepositTest is BaseTest {
     ) public {
         // First make a proper initial deposit to get past LOCKED_SHARES
         vm.startPrank(users.normalUser1);
-        usd.approve(address(usdai), 1_000_000 ether);
-        uint256 initialUsdaiBalance = usdai.deposit(address(usd), 1_000_000 ether, 0, users.normalUser1);
+        PYUSD.approve(address(usdai), 1_000_000 ether);
+        uint256 initialUsdaiBalance = usdai.deposit(1_000_000 ether, users.normalUser1);
         usdai.approve(address(stakedUsdai), initialUsdaiBalance);
         stakedUsdai.deposit(initialUsdaiBalance, users.normalUser1);
         vm.stopPrank();
@@ -106,8 +106,8 @@ contract StakedUSDaiDepositTest is BaseTest {
             depositAmounts[i] = bound(depositAmounts[i], 1 ether, 1_000_000 ether);
 
             vm.startPrank(users.normalUser2);
-            usd.approve(address(usdai), depositAmounts[i]);
-            uint256 usdaiBalance = usdai.deposit(address(usd), depositAmounts[i], 0, users.normalUser2);
+            PYUSD.approve(address(usdai), depositAmounts[i]);
+            uint256 usdaiBalance = usdai.deposit(depositAmounts[i], users.normalUser2);
 
             usdai.approve(address(stakedUsdai), usdaiBalance);
             uint256 shares = stakedUsdai.deposit(usdaiBalance, users.normalUser2);

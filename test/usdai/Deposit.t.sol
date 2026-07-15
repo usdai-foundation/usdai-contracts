@@ -38,18 +38,12 @@ contract USDaiDepositTest is BaseTest {
 
         /* Setup: Initial deposit to establish protocol TVL */
         vm.startPrank(users.admin);
-        usd.approve(address(usdai), initialDeposit);
-        usdai.deposit(address(usd), initialDeposit, 0, users.admin);
+        PYUSD.approve(address(usdai), initialDeposit);
+        usdai.deposit(initialDeposit, users.admin);
         vm.stopPrank();
-
-        /* Get actual PYUSD balance (may differ slightly due to swap) */
-        uint256 actualPyusdBalance = PYUSD.balanceOf(address(usdai));
 
         /* Warp time forward to simulate staleness */
         vm.warp(block.timestamp + timeElapsed);
-
-        /* Calculate expected yield based on ORIGINAL balance (before flash loan) */
-        uint256 scaledPrincipal = actualPyusdBalance * 1e12;
 
         /* Record total accrued yield BEFORE attacker deposit (this is a view - includes pending) */
         uint256 totalAccruedBefore = usdai.baseYieldAccrued();
@@ -60,7 +54,7 @@ contract USDaiDepositTest is BaseTest {
         /* Attacker deposits flash loan */
         vm.startPrank(users.normalUser1);
         PYUSD.approve(address(usdai), flashLoanAmount);
-        uint256 usdaiMinted = usdai.deposit(address(PYUSD), flashLoanAmount, 0, users.normalUser1);
+        uint256 usdaiMinted = usdai.deposit(flashLoanAmount, users.normalUser1);
         vm.stopPrank();
 
         /* After deposit, _accrue() was called and stored the yield.
@@ -82,20 +76,20 @@ contract USDaiDepositTest is BaseTest {
         vm.assume(amount > 0);
         vm.assume(amount <= 10_000_000 ether);
 
-        uint256 usdBalance = usd.balanceOf(users.normalUser1);
+        uint256 usdBalance = PYUSD.balanceOf(users.normalUser1);
 
         // User approves USDai to spend their USD
         vm.startPrank(users.normalUser1);
-        usd.approve(address(usdai), amount);
+        PYUSD.approve(address(usdai), amount);
 
         // User deposits 1000 USD into USDai
-        uint256 usdaiAmount = usdai.deposit(address(usd), amount, 0, users.normalUser1);
+        uint256 usdaiAmount = usdai.deposit(amount, users.normalUser1);
 
         // Assert user's USDai balance increased by usdaiAmount
         assertEq(usdai.balanceOf(users.normalUser1), usdaiAmount);
 
         // Assert user's USD balance decreased by amount
-        assertEq(usd.balanceOf(users.normalUser1), usdBalance - amount);
+        assertEq(PYUSD.balanceOf(users.normalUser1), usdBalance - amount);
 
         vm.stopPrank();
     }
@@ -107,7 +101,7 @@ contract USDaiDepositTest is BaseTest {
 
         vm.startPrank(users.normalUser1);
         vm.expectRevert(abi.encodeWithSelector(IUSDai.BlacklistedAddress.selector, users.normalUser1));
-        usdai.deposit(address(usd), 100 ether, 0, users.normalUser1);
+        usdai.deposit(100 ether, users.normalUser1);
         vm.stopPrank();
     }
 }

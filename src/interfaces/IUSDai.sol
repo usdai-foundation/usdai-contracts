@@ -107,12 +107,6 @@ interface IUSDai is IERC20 {
     /*------------------------------------------------------------------------*/
 
     /**
-     * @notice Get swap adapter
-     * @return Swap adapter
-     */
-    function swapAdapter() external view returns (address);
-
-    /**
      * @notice Get base token
      * @return Base token
      */
@@ -145,6 +139,22 @@ interface IUSDai is IERC20 {
 
     /**
      * @notice Deposit
+     * @param baseTokenAmount Base token amount
+     * @param recipient Recipient
+     * @return USDai amount
+     */
+    function deposit(uint256 baseTokenAmount, address recipient) external returns (uint256);
+
+    /**
+     * @notice Withdraw
+     * @param usdaiAmount USDai amount
+     * @param recipient Recipient
+     * @return Withdraw amount
+     */
+    function withdraw(uint256 usdaiAmount, address recipient) external returns (uint256);
+
+    /**
+     * @notice Deposit (deprecated)
      * @param depositToken Deposit token
      * @param depositAmount Deposit amount
      * @param usdaiAmountMinimum Minimum USDai amount
@@ -159,7 +169,7 @@ interface IUSDai is IERC20 {
     ) external returns (uint256);
 
     /**
-     * @notice Deposit
+     * @notice Deposit (deprecated)
      * @param depositToken Deposit token
      * @param depositAmount Deposit amount
      * @param usdaiAmountMinimum Minimum USDai amount
@@ -176,7 +186,7 @@ interface IUSDai is IERC20 {
     ) external returns (uint256);
 
     /**
-     * @notice Withdraw
+     * @notice Withdraw (deprecated)
      * @param withdrawToken Withdraw token
      * @param usdaiAmount USDai amount
      * @param withdrawAmountMinimum Minimum withdraw amount
@@ -191,7 +201,7 @@ interface IUSDai is IERC20 {
     ) external returns (uint256);
 
     /**
-     * @notice Withdraw
+     * @notice Withdraw (deprecated)
      * @param withdrawToken Withdraw token
      * @param usdaiAmount USDai amount
      * @param withdrawAmountMinimum Minimum withdraw amount

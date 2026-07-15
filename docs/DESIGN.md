@@ -9,80 +9,59 @@ stablecoin. It is primarily used as the on and off ramp to Staked USDai
 
 ### Minting
 
-Users can mint USDai by depositing a supported stablecoin (e.g. USDC, USDT),
-which is swapped internally for PYUSD.
+Users mint USDai by depositing PYUSD, the base token. USDai is minted one to one
+with the deposited PYUSD, scaled up to 18 decimals.
 
 ```solidity
 /**
  * @notice Deposit
- * @param depositToken Deposit token
- * @param depositAmount Deposit amount
- * @param usdaiAmountMinimum Minimum USDai amount
+ * @param baseTokenAmount Base token amount
  * @param recipient Recipient
- * @param data Data (for swap adapter)
  * @return USDai amount
  */
 function deposit(
-    address depositToken,
-    uint256 depositAmount,
-    uint256 usdaiAmountMinimum,
-    address recipient,
-    bytes calldata data
+    uint256 baseTokenAmount,
+    address recipient
 ) external returns (uint256);
 ```
 
 ```mermaid
 sequenceDiagram
     actor User
-    User->>+USDai: Deposit stablecoin
-    USDai->>+Swap Adapter: Swap stablecoin for PYUSD
-    Swap Adapter->>+Uniswap: Swap
-    Swap Adapter->>+USDai: PYUSD tokens
+    User->>+USDai: Deposit PYUSD
     USDai->>+User: Mint USDai tokens
 ```
 
+The legacy multi-token deposit overloads remain for backwards compatibility, but
+they now revert unless the deposit token is the base token.
+
 ### Burning
 
-Users can burn USDai and withdraw a supported stablecoin.
+Users burn USDai and withdraw PYUSD one to one.
 
 ```solidity
 /**
  * @notice Withdraw
- * @param withdrawToken Withdraw token
- * @param usdaiAmount USD amount
- * @param withdrawAmountMinimum Withdraw amount minimum
+ * @param usdaiAmount USDai amount
  * @param recipient Recipient
- * @param data Data (for swap adapter)
  * @return Withdraw amount
  */
 function withdraw(
-    address withdrawToken,
     uint256 usdaiAmount,
-    uint256 withdrawAmountMinimum,
-    address recipient,
-    bytes calldata data
+    address recipient
 ) external returns (uint256);
 ```
 
 ```mermaid
 sequenceDiagram
     actor User
-    User->>+USDai: Withdraw stablecoin
+    User->>+USDai: Withdraw USDai
     Note right of USDai: USDai burned
-    USDai->>+Swap Adapter: Swap PYUSD for stablecoin
-    Swap Adapter<<->>+Uniswap: Swap
-    Swap Adapter->>+USDai: Stablecoin tokens
-    USDai->>+User: Stablecoin tokens
+    USDai->>+User: PYUSD tokens
 ```
 
-### Swap Adapters
-
-Swap adapters are responsible for swapping in and out of PYUSD with supported
-currencies. Currently, the default swap adapter is the
-[`UniswapV3SwapAdapter`](../src/swapAdapters/UniswapV3SwapAdapter.sol). Swap
-adapters accept optional data to help facilitate swapping. In the case of the
-`UniswapV3SwapAdapter`, the optional data specifies a path for the swap router
-to swap tokens that do not have a direct swap market with PYUSD.
+The legacy multi-token withdraw overloads remain for backwards compatibility, but
+they now revert unless the withdraw token is the base token.
 
 ## sUSDai
 

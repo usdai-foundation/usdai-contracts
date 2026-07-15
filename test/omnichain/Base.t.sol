@@ -252,6 +252,9 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
             "" // No additional initialization data
         );
 
+        /* Set the USDai base token to the USDT home token */
+        MockUSDai(address(usdai)).setBaseToken(address(usdtHomeToken));
+
         /* Deploy staked usdai implementation */
         stakedUsdaiImpl = new MockStakedUSDai(address(usdai), address(mockLoanRouter), address(stakedUsdaiHomeOAdapter));
 

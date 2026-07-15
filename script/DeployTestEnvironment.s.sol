@@ -5,28 +5,15 @@ import "forge-std/Script.sol";
 
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
-import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-
-import {UniswapV3SwapAdapter} from "src/swapAdapters/UniswapV3SwapAdapter.sol";
 import {USDai} from "src/USDai.sol";
 import {StakedUSDai} from "src/StakedUSDai.sol";
 import {Deployer} from "./utils/Deployer.s.sol";
 
 contract DeployTestEnvironment is Deployer {
-    function run(
-        address baseToken,
-        address swapRouter,
-        address loanRouterV2,
-        address[] calldata tokens
-    ) public broadcast useDeployment returns (address, address, address) {
-        // Deploy UniswapV3SwapAdapter
-        UniswapV3SwapAdapter swapAdapter = new UniswapV3SwapAdapter(baseToken, swapRouter, tokens);
-        console.log("UniswapV3SwapAdapter", address(swapAdapter));
-
+    function run(address baseToken, address loanRouterV2) public broadcast useDeployment returns (address, address) {
         // Deploy USDai implemetation
-        USDai USDaiImpl = new USDai(
-            address(swapAdapter), _deployment.baseYieldEscrow, _deployment.stakedUSDai, _deployment.oAdapterUSDai
-        );
+        USDai USDaiImpl =
+            new USDai(baseToken, _deployment.baseYieldEscrow, _deployment.stakedUSDai, _deployment.oAdapterUSDai);
         console.log("USDai implementation", address(USDaiImpl));
 
         // Deploy USDai proxy
@@ -53,14 +40,11 @@ contract DeployTestEnvironment is Deployer {
         );
         console.log("StakedUSDai proxy", address(stakedUSDai));
 
-        // Grant roles
-        IAccessControl(address(swapAdapter)).grantRole(keccak256("USDAI_ROLE"), address(USDai_));
-
         // Log deployment
-        _deployment.swapAdapter = address(swapAdapter);
+
         _deployment.USDai = address(USDai_);
         _deployment.stakedUSDai = address(stakedUSDai);
 
-        return (address(swapAdapter), address(USDai_), address(stakedUSDai));
+        return (address(USDai_), address(stakedUSDai));
     }
 }

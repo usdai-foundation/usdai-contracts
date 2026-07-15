@@ -25,7 +25,6 @@ contract Deployer is BaseScript {
         uint64 genesisTimestamp;
         address USDai;
         address stakedUSDai;
-        address swapAdapter;
         address baseYieldEscrow;
         address oAdapterUSDai;
         address oAdapterStakedUSDai;
@@ -109,7 +108,6 @@ contract Deployer is BaseScript {
         json = stdJson.serialize("", "GenesisTimestamp", _deployment.genesisTimestamp);
         json = stdJson.serialize("", "USDai", _deployment.USDai);
         json = stdJson.serialize("", "StakedUSDai", _deployment.stakedUSDai);
-        json = stdJson.serialize("", "SwapAdapter", _deployment.swapAdapter);
         json = stdJson.serialize("", "BaseYieldEscrow", _deployment.baseYieldEscrow);
         json = stdJson.serialize("", "OAdapterUSDai", _deployment.oAdapterUSDai);
         json = stdJson.serialize("", "OAdapterStakedUSDai", _deployment.oAdapterStakedUSDai);
@@ -149,13 +147,6 @@ contract Deployer is BaseScript {
             _deployment.stakedUSDai = instance;
         } catch {
             console.log("Could not parse StakedUSDai");
-        }
-
-        /* Deserialize SwapAdapter */
-        try vm.parseJsonAddress(json, ".SwapAdapter") returns (address instance) {
-            _deployment.swapAdapter = instance;
-        } catch {
-            console.log("Could not parse SwapAdapter");
         }
 
         /* Deserialize BaseYieldEscrow */

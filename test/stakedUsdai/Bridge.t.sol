@@ -11,10 +11,10 @@ contract StakedUSDaiBridgeTest is BaseTest {
 
         // User approves USDai to spend their USD
         vm.startPrank(users.normalUser1);
-        usd.approve(address(usdai), 10_000_000 ether);
+        PYUSD.approve(address(usdai), 10_000_000 ether);
 
         // User deposits USD into USDai
-        uint256 usdaiBalance = usdai.deposit(address(usd), 10_000_000 ether, 0, users.normalUser1);
+        uint256 usdaiBalance = usdai.deposit(10_000_000 ether, users.normalUser1);
 
         // User deposits USDai into StakedUSDai
         usdai.approve(address(stakedUsdai), usdaiBalance);

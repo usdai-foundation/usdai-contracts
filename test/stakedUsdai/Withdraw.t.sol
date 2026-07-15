@@ -16,10 +16,10 @@ contract StakedUSDaiWithdrawTest is BaseTest {
 
         // User approves USDai to spend their USD
         vm.startPrank(users.normalUser1);
-        usd.approve(address(usdai), 1_000_000 ether);
+        PYUSD.approve(address(usdai), 1_000_000 ether);
 
         // User deposits USD into USDai
-        uint256 initialBalance = usdai.deposit(address(usd), 1_000_000 ether, 0, users.normalUser1);
+        uint256 initialBalance = usdai.deposit(1_000_000 ether, users.normalUser1);
 
         // User deposits USDai into StakedUSDai
         usdai.approve(address(stakedUsdai), initialBalance);
@@ -35,10 +35,10 @@ contract StakedUSDaiWithdrawTest is BaseTest {
 
         // Service redemption as manager
         vm.startPrank(users.manager);
-        usd.approve(address(usdai), 1_000_000 ether);
+        PYUSD.approve(address(usdai), 1_000_000 ether);
 
         // User deposits USD into USDai
-        uint256 serviceAmount = usdai.deposit(address(usd), 1_000_000 ether, 0, address(stakedUsdai));
+        uint256 serviceAmount = usdai.deposit(1_000_000 ether, address(stakedUsdai));
 
         // Warp past redemption timestamp
         vm.warp(redemptionTimestamp + 1);

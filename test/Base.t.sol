@@ -11,9 +11,6 @@ import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transpa
 import {ITransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 import {TestERC721} from "./tokens/TestERC721.sol";
-import {TestERC20} from "./tokens/TestERC20.sol";
-
-import {UniswapPoolHelpers} from "./helpers/UniswapPoolHelpers.sol";
 
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -26,7 +23,6 @@ import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouter
 import {USDai} from "src/USDai.sol";
 import {StakedUSDai} from "src/StakedUSDai.sol";
 import {BaseYieldEscrow} from "src/BaseYieldEscrow.sol";
-import {UniswapV3SwapAdapter} from "src/swapAdapters/UniswapV3SwapAdapter.sol";
 import {IUSDai} from "src/interfaces/IUSDai.sol";
 
 /**
@@ -117,10 +113,7 @@ abstract contract BaseTest is Test {
     }
 
     Users internal users;
-    TestERC20 internal usd;
-    TestERC20 internal usd2;
     TestERC721 internal nft;
-    UniswapV3SwapAdapter internal uniswapV3SwapAdapter;
     ICollateralTimelock internal collateralTimelock;
     IDepositTimelock internal depositTimelock;
     IEscrowTimelock internal escrowTimelock;
@@ -160,11 +153,8 @@ abstract contract BaseTest is Test {
 
         /* Deploy contracts */
         deployNft();
-        deployUsd();
-        deployUsdPool();
 
         deployBaseYieldEscrow();
-        deployUniswapV3SwapAdapter();
         deployUsdai();
 
         deployCollateralTimelock();
@@ -178,42 +168,11 @@ abstract contract BaseTest is Test {
         grantDepositTimelockRoles();
         grantCollateralTimelockRoles();
 
-        setupPyusdLiquidity();
+        /* Fund users with base token */
+        fundBaseToken();
 
         /* Set approvals */
         setApprovals();
-    }
-
-    function setupPyusdLiquidity() internal {
-        /* Mint to admin */
-        deal(address(PYUSD), address(users.admin), 40_000_002 ether);
-        deal(address(USDC), address(users.admin), 20_000_001 ether);
-
-        /* Deploy pool as admin */
-        vm.startPrank(users.admin);
-        UniswapPoolHelpers.setupUniswapPool(
-            address(users.admin), address(usd), address(PYUSD), 20_000_000 ether, 20_000_000 ether
-        );
-        UniswapPoolHelpers.setupUniswapPool(
-            address(users.admin), address(USDC), address(PYUSD), 20_000_000 ether, 20_000_000 ether
-        );
-        vm.stopPrank();
-    }
-
-    function deployUniswapV3SwapAdapter() internal {
-        vm.startPrank(users.deployer);
-
-        address[] memory whitelistedTokens = new address[](4);
-        whitelistedTokens[0] = address(usd);
-        whitelistedTokens[1] = address(WETH);
-        whitelistedTokens[2] = address(USDT);
-        whitelistedTokens[3] = address(USDC);
-
-        /* Deploy Uniswap V3 swap adapter */
-        uniswapV3SwapAdapter =
-            new UniswapV3SwapAdapter(address(PYUSD), address(UniswapPoolHelpers.UNISWAP_ROUTER), whitelistedTokens);
-
-        vm.stopPrank();
     }
 
     function deployBaseYieldEscrow() internal {
@@ -260,58 +219,19 @@ abstract contract BaseTest is Test {
         vm.stopPrank();
     }
 
-    function deployUsd() internal {
-        vm.startPrank(users.deployer);
-
-        /* Deploy USD ERC20 */
-        usd = new TestERC20("USD", "USD", 6, 300_000_000 ether);
-
-        /* Mint USD to users */
-        /// forge-lint: disable-next-line
-        usd.transfer(address(users.normalUser1), 40_000_000 ether);
-        /// forge-lint: disable-next-line
-        usd.transfer(address(users.normalUser2), 40_000_000 ether);
-        /// forge-lint: disable-next-line
-        usd.transfer(address(users.admin), 50_000_000 ether);
-        /// forge-lint: disable-next-line
-        usd.transfer(address(users.manager), 40_000_000 ether);
-
-        /* Deploy USD2 ERC20 */
-        usd2 = new TestERC20("USD", "USD", 6, 300_000_000 ether);
-
-        /* Mint USD2 to users */
-        /// forge-lint: disable-next-line
-        usd2.transfer(address(users.normalUser1), 40_000_000 ether);
-        /// forge-lint: disable-next-line
-        usd2.transfer(address(users.normalUser2), 40_000_000 ether);
-        /// forge-lint: disable-next-line
-        usd2.transfer(address(users.admin), 50_000_000 ether);
-        /// forge-lint: disable-next-line
-        usd2.transfer(address(users.manager), 40_000_000 ether);
-
-        vm.stopPrank();
-    }
-
-    function deployUsdPool() internal {
-        vm.startPrank(users.admin);
-
-        UniswapPoolHelpers.setupUniswapPool(
-            address(users.admin), address(usd), address(usd2), 20_000_000 ether, 20_000_000 ether
-        );
-
-        UniswapPoolHelpers.setupUniswapPool(
-            address(users.admin), address(usd), address(USDT), 1_000_000 * 1e6, 1_000_000 * 1e6
-        );
-
-        vm.stopPrank();
+    function fundBaseToken() internal {
+        /* Deal PYUSD to users for USDai deposits */
+        deal(address(PYUSD), address(users.normalUser1), 500_000_000 ether);
+        deal(address(PYUSD), address(users.normalUser2), 500_000_000 ether);
+        deal(address(PYUSD), address(users.admin), 500_000_000 ether);
+        deal(address(PYUSD), address(users.manager), 500_000_000 ether);
     }
 
     function deployUsdai() internal {
         vm.startPrank(users.deployer);
 
         /* Deploy usdai implementation */
-        IUSDai usdaiImpl =
-            new USDai(address(uniswapV3SwapAdapter), address(baseYieldEscrow), address(stakedUsdai), users.mockOAdapter);
+        IUSDai usdaiImpl = new USDai(address(PYUSD), address(baseYieldEscrow), address(stakedUsdai), users.mockOAdapter);
 
         /* Deploy usdai proxy */
         TransparentUpgradeableProxy usdaiProxy = new TransparentUpgradeableProxy(
@@ -320,9 +240,6 @@ abstract contract BaseTest is Test {
 
         /* Deploy usdai */
         usdai = IUSDai(address(usdaiProxy));
-
-        /* Grant USDai role to Uniswap V3 swap adapter */
-        uniswapV3SwapAdapter.grantRole(keccak256("USDAI_ROLE"), address(usdai));
 
         /* Grant blacklist admin role to deployer */
         AccessControl(address(usdai)).grantRole(keccak256("BLACKLIST_ADMIN_ROLE"), address(users.deployer));
@@ -350,8 +267,7 @@ abstract contract BaseTest is Test {
 
     function upgradeUsdai() internal {
         /* Deploy usdai implementation */
-        IUSDai usdaiImpl =
-            new USDai(address(uniswapV3SwapAdapter), address(baseYieldEscrow), address(stakedUsdai), users.mockOAdapter);
+        IUSDai usdaiImpl = new USDai(address(PYUSD), address(baseYieldEscrow), address(stakedUsdai), users.mockOAdapter);
 
         /* Lookup proxy admin from EIP-1967 storage slot */
         address proxyAdmin = address(uint160(uint256(vm.load(address(usdai), ERC1967Utils.ADMIN_SLOT))));
@@ -448,8 +364,8 @@ abstract contract BaseTest is Test {
 
         /* Fund admin with USDai so it can cover interest on cancel and withdraw */
         vm.startPrank(users.manager);
-        usd.approve(address(usdai), 10_000 ether);
-        usdai.deposit(address(usd), 10_000 ether, 1, users.admin);
+        PYUSD.approve(address(usdai), 10_000 ether);
+        usdai.deposit(10_000 ether, users.admin);
         vm.stopPrank();
 
         vm.startPrank(users.admin);
@@ -667,7 +583,7 @@ abstract contract BaseTest is Test {
             vm.startPrank(normalUsers[i]);
 
             /* Approve tokens */
-            usd.approve(address(usdai), type(uint256).max);
+            PYUSD.approve(address(usdai), type(uint256).max);
             usdai.approve(address(stakedUsdai), type(uint256).max);
 
             vm.stopPrank();
@@ -678,10 +594,10 @@ abstract contract BaseTest is Test {
         uint256 amount
     ) internal {
         vm.startPrank(users.manager);
-        usd.approve(address(usdai), amount * 2);
+        PYUSD.approve(address(usdai), amount * 2);
 
-        // User deposits USD into USDai
-        usdai.deposit(address(usd), amount * 2, amount, address(users.manager));
+        // User deposits PYUSD into USDai
+        usdai.deposit(amount * 2, address(users.manager));
 
         /* Deposit into staked usdai */
         usdai.transfer(address(stakedUsdai), amount);

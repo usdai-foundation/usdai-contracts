@@ -11,10 +11,10 @@ contract StakedUSDaiDepositSharePriceTest is BaseTest {
 
         // User approves USDai to spend their USD
         vm.startPrank(users.normalUser1);
-        usd.approve(address(usdai), 10_000_000 ether);
+        PYUSD.approve(address(usdai), 10_000_000 ether);
 
         // User deposits USD into USDai
-        initialBalance = usdai.deposit(address(usd), 10_000_000 ether, 0, users.normalUser1);
+        initialBalance = usdai.deposit(10_000_000 ether, users.normalUser1);
 
         vm.stopPrank();
     }

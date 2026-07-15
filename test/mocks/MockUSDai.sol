@@ -76,6 +76,15 @@ contract MockUSDai is
     address internal immutable _bridgeAdapter;
 
     /*------------------------------------------------------------------------*/
+    /* State */
+    /*------------------------------------------------------------------------*/
+
+    /**
+     * @notice Base token
+     */
+    address internal _baseToken;
+
+    /*------------------------------------------------------------------------*/
     /* Structures */
     /*------------------------------------------------------------------------*/
 
@@ -206,15 +215,18 @@ contract MockUSDai is
     /**
      * @inheritdoc IUSDai
      */
-    function swapAdapter() external pure returns (address) {
-        return address(0);
+    function baseToken() external view returns (address) {
+        return _baseToken;
     }
 
     /**
-     * @inheritdoc IUSDai
+     * @notice Set base token
+     * @param baseToken_ Base token
      */
-    function baseToken() external pure returns (address) {
-        return address(0);
+    function setBaseToken(
+        address baseToken_
+    ) external {
+        _baseToken = baseToken_;
     }
 
     /**
@@ -278,75 +290,53 @@ contract MockUSDai is
     }
 
     /**
-     * @notice Deposit
-     * @param depositToken Deposit token
+     * @notice Deposit base token
      * @param depositAmount Deposit amount
-     * @param usdaiAmountMinimum USDai amount minimum
      * @param recipient Recipient address
      * @return USDai amount
      */
     function _deposit(
-        address depositToken,
         uint256 depositAmount,
-        uint256 usdaiAmountMinimum,
-        address recipient,
-        bytes calldata
-    )
-        internal
-        virtual
-        nonZeroUint(depositAmount)
-        nonZeroUint(usdaiAmountMinimum)
-        nonZeroAddress(recipient)
-        returns (uint256)
-    {
-        /* Transfer token in from sender to this contract */
-        IERC20(depositToken).transferFrom(msg.sender, address(this), depositAmount);
+        address recipient
+    ) internal virtual nonZeroUint(depositAmount) nonZeroAddress(recipient) returns (uint256) {
+        /* Transfer base token in from sender to this contract */
+        IERC20(_baseToken).transferFrom(msg.sender, address(this), depositAmount);
 
-        uint256 usdaiAmount = IERC20Metadata(depositToken).decimals() == 6 ? depositAmount * 1e12 : depositAmount;
-
-        /* Check that the USDai amount is greater than the minimum */
-        if (usdaiAmount < usdaiAmountMinimum) revert InvalidAmount();
+        /* Scale deposit amount based on base token decimals */
+        uint256 usdaiAmount = IERC20Metadata(_baseToken).decimals() == 6 ? depositAmount * 1e12 : depositAmount;
 
         /* Mint to the recipient */
         _mint(recipient, usdaiAmount);
 
         /* Emit deposited event */
-        emit Deposited(msg.sender, recipient, depositToken, depositAmount, usdaiAmountMinimum);
+        emit Deposited(msg.sender, recipient, _baseToken, depositAmount, usdaiAmount);
 
         return usdaiAmount;
     }
 
     /**
-     * @notice Withdraw
-     * @param withdrawToken Withdraw token
+     * @notice Withdraw base token
      * @param usdaiAmount USD.ai amount
-     * @param withdrawAmountMinimum Minimum withdraw amount
      * @param recipient Recipient address
      * @return Withdraw amount
      */
     function _withdraw(
-        address withdrawToken,
         uint256 usdaiAmount,
-        uint256 withdrawAmountMinimum,
-        address recipient,
-        bytes calldata
-    )
-        internal
-        nonZeroUint(usdaiAmount)
-        nonZeroUint(withdrawAmountMinimum)
-        nonZeroAddress(recipient)
-        returns (uint256)
-    {
+        address recipient
+    ) internal nonZeroUint(usdaiAmount) nonZeroAddress(recipient) returns (uint256) {
         /* Burn USD.ai tokens */
         _burn(msg.sender, usdaiAmount);
 
-        /* Transfer token output from this contract to the recipient address */
-        IERC20(withdrawToken).transfer(recipient, withdrawAmountMinimum);
+        /* Scale USDai amount down based on base token decimals */
+        uint256 withdrawAmount = IERC20Metadata(_baseToken).decimals() == 6 ? usdaiAmount / 1e12 : usdaiAmount;
+
+        /* Transfer base token to the recipient address */
+        IERC20(_baseToken).transfer(recipient, withdrawAmount);
 
         /* Emit withdrawn event */
-        emit Withdrawn(msg.sender, recipient, withdrawToken, usdaiAmount, withdrawAmountMinimum);
+        emit Withdrawn(msg.sender, recipient, _baseToken, usdaiAmount, withdrawAmount);
 
-        return withdrawAmountMinimum;
+        return withdrawAmount;
     }
 
     /*------------------------------------------------------------------------*/
@@ -371,51 +361,65 @@ contract MockUSDai is
     /**
      * @inheritdoc IUSDai
      */
-    function deposit(
-        address depositToken,
-        uint256 depositAmount,
-        uint256 usdaiAmountMinimum,
-        address recipient
-    ) external nonReentrant returns (uint256) {
-        return _deposit(depositToken, depositAmount, usdaiAmountMinimum, recipient, msg.data[0:0]);
+    function deposit(uint256 baseTokenAmount, address recipient) external nonReentrant returns (uint256) {
+        return _deposit(baseTokenAmount, recipient);
     }
 
     /**
      * @inheritdoc IUSDai
      */
     function deposit(
-        address depositToken,
+        address,
         uint256 depositAmount,
-        uint256 usdaiAmountMinimum,
-        address recipient,
-        bytes calldata data
-    ) external nonReentrant returns (uint256) {
-        return _deposit(depositToken, depositAmount, usdaiAmountMinimum, recipient, data);
-    }
-
-    /**
-     * @inheritdoc IUSDai
-     */
-    function withdraw(
-        address withdrawToken,
-        uint256 usdaiAmount,
-        uint256 withdrawAmountMinimum,
+        uint256,
         address recipient
     ) external nonReentrant returns (uint256) {
-        return _withdraw(withdrawToken, usdaiAmount, withdrawAmountMinimum, recipient, msg.data[0:0]);
+        return _deposit(depositAmount, recipient);
+    }
+
+    /**
+     * @inheritdoc IUSDai
+     */
+    function deposit(
+        address,
+        uint256 depositAmount,
+        uint256,
+        address recipient,
+        bytes calldata
+    ) external nonReentrant returns (uint256) {
+        return _deposit(depositAmount, recipient);
+    }
+
+    /**
+     * @inheritdoc IUSDai
+     */
+    function withdraw(uint256 usdaiAmount, address recipient) external nonReentrant returns (uint256) {
+        return _withdraw(usdaiAmount, recipient);
     }
 
     /**
      * @inheritdoc IUSDai
      */
     function withdraw(
-        address withdrawToken,
+        address,
         uint256 usdaiAmount,
-        uint256 withdrawAmountMinimum,
-        address recipient,
-        bytes calldata data
+        uint256,
+        address recipient
     ) external nonReentrant returns (uint256) {
-        return _withdraw(withdrawToken, usdaiAmount, withdrawAmountMinimum, recipient, data);
+        return _withdraw(usdaiAmount, recipient);
+    }
+
+    /**
+     * @inheritdoc IUSDai
+     */
+    function withdraw(
+        address,
+        uint256 usdaiAmount,
+        uint256,
+        address recipient,
+        bytes calldata
+    ) external nonReentrant returns (uint256) {
+        return _withdraw(usdaiAmount, recipient);
     }
 
     /*------------------------------------------------------------------------*/

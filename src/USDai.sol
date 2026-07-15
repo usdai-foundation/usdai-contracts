@@ -15,7 +15,6 @@ import "@openzeppelin/contracts-upgradeable/utils/MulticallUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 import "./interfaces/IUSDai.sol";
-import "./interfaces/ISwapAdapter.sol";
 import "./interfaces/IMintableBurnable.sol";
 import "./interfaces/IBaseYieldEscrow.sol";
 import "./interfaces/IStakedUSDai.sol";
@@ -89,11 +88,6 @@ contract USDai is
     /*------------------------------------------------------------------------*/
 
     /**
-     * @notice Swap adapter
-     */
-    ISwapAdapter internal immutable _swapAdapter;
-
-    /**
      * @notice Base token
      */
     IERC20 internal immutable _baseToken;
@@ -151,17 +145,16 @@ contract USDai is
 
     /**
      * @notice USDai Constructor
-     * @param swapAdapter_ Swap Adapter
+     * @param baseToken_ Base token
      * @param baseYieldEscrow_ Base token yield escrow
      * @param baseYieldRecipient_ Base yield recipient
      * @param bridgeAdapter_ Bridge adapter contract
      */
-    constructor(address swapAdapter_, address baseYieldEscrow_, address baseYieldRecipient_, address bridgeAdapter_) {
+    constructor(address baseToken_, address baseYieldEscrow_, address baseYieldRecipient_, address bridgeAdapter_) {
         _disableInitializers();
 
-        _swapAdapter = ISwapAdapter(swapAdapter_);
-        _baseToken = IERC20(_swapAdapter.baseToken());
-        _scaleFactor = 10 ** (18 - IERC20Metadata(_swapAdapter.baseToken()).decimals());
+        _baseToken = IERC20(baseToken_);
+        _scaleFactor = 10 ** (18 - IERC20Metadata(baseToken_).decimals());
         _baseYieldEscrow = IBaseYieldEscrow(baseYieldEscrow_);
         _baseYieldRecipient = baseYieldRecipient_;
         _bridgeAdapter = bridgeAdapter_;
@@ -240,13 +233,6 @@ contract USDai is
     /*------------------------------------------------------------------------*/
     /* Getters  */
     /*------------------------------------------------------------------------*/
-
-    /**
-     * @inheritdoc IUSDai
-     */
-    function swapAdapter() external view returns (address) {
-        return address(_swapAdapter);
-    }
 
     /**
      * @inheritdoc IUSDai
@@ -357,38 +343,30 @@ contract USDai is
      * @notice Deposit
      * @param depositToken Deposit token
      * @param depositAmount Deposit amount
-     * @param usdaiAmountMinimum USDai amount minimum
      * @param recipient Recipient address
-     * @param data Data
      * @return USDai amount
      */
     function _deposit(
         address depositToken,
         uint256 depositAmount,
-        uint256 usdaiAmountMinimum,
+        uint256,
         address recipient,
-        bytes calldata data
+        bytes calldata
     ) internal nonZeroUint(depositAmount) nonZeroAddress(recipient) returns (uint256) {
+        /* If the deposit token isn't base token, revert */
+        if (depositToken != address(_baseToken)) revert InvalidAddress();
+
         /* Accrue base yield */
         _accrue();
 
-        /* Transfer token in from sender to this contract */
-        IERC20(depositToken).safeTransferFrom(msg.sender, address(this), depositAmount);
-
-        /* If the deposit token isn't base token, swap in */
-        uint256 usdaiAmount;
-        if (depositToken != address(_baseToken)) {
-            /* Approve the adapter to spend the token in */
-            IERC20(depositToken).forceApprove(address(_swapAdapter), depositAmount);
-
-            /* Swap in deposit token for base token */
-            usdaiAmount = _scale(_swapAdapter.swapIn(depositToken, depositAmount, _unscaleUp(usdaiAmountMinimum), data));
-        } else {
-            usdaiAmount = _scale(depositAmount);
-        }
+        /* Scale deposit amount */
+        uint256 usdaiAmount = _scale(depositAmount);
 
         /* Mint to the recipient */
         _mint(recipient, usdaiAmount);
+
+        /* Transfer token in from sender to this contract */
+        IERC20(depositToken).safeTransferFrom(msg.sender, address(this), depositAmount);
 
         /* Emit deposited event */
         emit Deposited(msg.sender, recipient, depositToken, depositAmount, usdaiAmount);
@@ -399,38 +377,28 @@ contract USDai is
     /**
      * @notice Withdraw
      * @param withdrawToken Withdraw token
-     * @param usdaiAmount USD.ai amount
-     * @param withdrawAmountMinimum Minimum withdraw amount (only checked for non-base token withdrawals)
+     * @param usdaiAmount USDai amount
      * @param recipient Recipient address
-     * @param data Data
      * @return Withdraw amount
      */
     function _withdraw(
         address withdrawToken,
         uint256 usdaiAmount,
-        uint256 withdrawAmountMinimum,
+        uint256,
         address recipient,
-        bytes calldata data
+        bytes calldata
     ) internal nonZeroUint(usdaiAmount) nonZeroAddress(recipient) returns (uint256) {
+        /* If the withdraw token isn't base token, revert */
+        if (withdrawToken != address(_baseToken)) revert InvalidAddress();
+
         /* Accrue base yield */
         _accrue();
 
-        /* Burn USD.ai tokens */
+        /* Burn USDai tokens */
         _burn(msg.sender, usdaiAmount);
 
-        /* If the withdraw token isn't base token, swap out */
-        uint256 withdrawAmount;
-        if (withdrawToken != address(_baseToken)) {
-            uint256 baseTokenAmount = _unscale(usdaiAmount);
-
-            /* Approve the adapter to spend the token in */
-            _baseToken.forceApprove(address(_swapAdapter), baseTokenAmount);
-
-            /* Swap base token input for withdraw token */
-            withdrawAmount = _swapAdapter.swapOut(withdrawToken, baseTokenAmount, withdrawAmountMinimum, data);
-        } else {
-            withdrawAmount = _unscale(usdaiAmount);
-        }
+        /* Scale USDai amount to withdraw amount */
+        uint256 withdrawAmount = _unscale(usdaiAmount);
 
         /* Transfer token output from this contract to the recipient address */
         IERC20(withdrawToken).safeTransfer(recipient, withdrawAmount);
@@ -513,6 +481,16 @@ contract USDai is
      * @inheritdoc IUSDai
      */
     function deposit(
+        uint256 baseTokenAmount,
+        address recipient
+    ) external nonReentrant whenNotPaused returns (uint256) {
+        return _deposit(address(_baseToken), baseTokenAmount, 0, recipient, msg.data[0:0]);
+    }
+
+    /**
+     * @inheritdoc IUSDai
+     */
+    function deposit(
         address depositToken,
         uint256 depositAmount,
         uint256 usdaiAmountMinimum,
@@ -532,6 +510,13 @@ contract USDai is
         bytes calldata data
     ) external nonReentrant whenNotPaused returns (uint256) {
         return _deposit(depositToken, depositAmount, usdaiAmountMinimum, recipient, data);
+    }
+
+    /**
+     * @inheritdoc IUSDai
+     */
+    function withdraw(uint256 usdaiAmount, address recipient) external nonReentrant whenNotPaused returns (uint256) {
+        return _withdraw(address(_baseToken), usdaiAmount, 0, recipient, msg.data[0:0]);
     }
 
     /**

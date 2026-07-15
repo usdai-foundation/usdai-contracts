@@ -21,10 +21,10 @@ contract StakedUSDaiHarvestBaseYieldTest is BaseTest {
 
         // User approves USDai to spend their USD
         vm.startPrank(users.normalUser1);
-        usd.approve(address(usdai), 957_033_503 * 1e6);
+        PYUSD.approve(address(usdai), 957_033_503 * 1e6);
 
         // User deposits amount of USD into USDai (~957,027,799 USD)
-        usdaiAmount = usdai.deposit(address(usd), 957_033_503 * 1e6, 0, users.normalUser1);
+        usdaiAmount = usdai.deposit(957_033_503 * 1e6, users.normalUser1);
 
         // Stake USDai
         usdai.approve(address(stakedUsdai), usdaiAmount);
