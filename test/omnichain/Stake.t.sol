@@ -354,14 +354,13 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
 
         vm.stopPrank();
 
-        // Redeploy USDaiQueuedDepositor now with correct oUsdaiUtility address
+        // Redeploy OUSDaiUtility bound to the USDai home endpoint
         OUSDaiUtility newImpl = new OUSDaiUtility(
             address(endpoints[usdaiHomeEid]),
             address(usdai),
             address(stakedUsdai),
             address(usdaiHomeOAdapter),
-            address(stakedUsdaiHomeOAdapter),
-            address(usdaiQueuedDepositor)
+            address(stakedUsdaiHomeOAdapter)
         );
         address proxyAdmin = address(uint160(uint256(vm.load(address(oUsdaiUtility), ERC1967Utils.ADMIN_SLOT))));
         ProxyAdmin(proxyAdmin).upgradeAndCall(

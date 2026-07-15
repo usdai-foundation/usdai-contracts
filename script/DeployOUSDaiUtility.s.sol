@@ -22,8 +22,7 @@ contract DeployOUSDaiUtility is Deployer {
             _deployment.USDai,
             _deployment.stakedUSDai,
             _deployment.oAdapterUSDai,
-            _deployment.oAdapterStakedUSDai,
-            _deployment.usdaiQueuedDepositor
+            _deployment.oAdapterStakedUSDai
         );
         console.log("OUSDaiUtility implementation", address(oUSDaiUtilityImpl));
 

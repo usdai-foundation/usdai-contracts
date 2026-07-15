@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IUSDaiQueuedDepositor} from "./IUSDaiQueuedDepositor.sol";
-
 /**
  * @title OUSDai Utility Interface
  * @author USD.AI Foundation
@@ -18,7 +16,7 @@ interface IOUSDaiUtility {
     enum ActionType {
         Deposit,
         DepositAndStake,
-        QueuedDeposit, /* deposit, or deposit and stake */
+        QueuedDeposit, /* deprecated no-op, kept for enum ordinal stability */
         Stake
     }
 
@@ -45,11 +43,6 @@ interface IOUSDaiUtility {
      * @notice Deposit and stake failed
      */
     error DepositAndStakeFailed();
-
-    /**
-     * @notice Queued deposit failed
-     */
-    error QueuedDepositFailed();
 
     /**
      * @notice Stake failed
@@ -92,20 +85,6 @@ interface IOUSDaiUtility {
         uint256 depositAmount,
         uint256 usdaiAmount,
         uint256 susdaiAmount
-    );
-
-    /**
-     * @notice Composer queued deposit event
-     * @param queueType Queue type
-     * @param depositToken Token to deposit
-     * @param depositAmount Amount of tokens to deposit
-     * @param recipient Recipient
-     */
-    event ComposerQueuedDeposit(
-        IUSDaiQueuedDepositor.QueueType indexed queueType,
-        address indexed depositToken,
-        address indexed recipient,
-        uint256 depositAmount
     );
 
     /**

@@ -3,7 +3,7 @@ pragma solidity 0.8.29;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
@@ -15,7 +15,6 @@ import "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/OFTCore.sol";
 import "../interfaces/IOUSDaiUtility.sol";
 import "../interfaces/IUSDai.sol";
 import "../interfaces/IStakedUSDai.sol";
-import "../interfaces/IUSDaiQueuedDepositor.sol";
 
 /**
  * @title Omnichain USDai Utility
@@ -63,11 +62,6 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
      */
     IOFT internal immutable _stakedUsdaiOAdapter;
 
-    /**
-     * @notice USDai queued depositor on the destination chain
-     */
-    IUSDaiQueuedDepositor internal immutable _usdaiQueuedDepositor;
-
     /*------------------------------------------------------------------------*/
     /* State */
     /*------------------------------------------------------------------------*/
@@ -88,15 +82,13 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
      * @param stakedUsdai_ StakedUSDai contract
      * @param usdaiOAdapter_ USDai omnichain adapter
      * @param stakedUsdaiOAdapter_ StakedUSDai omnichain adapter
-     * @param usdaiQueuedDepositor_ USDai queued depositor
      */
     constructor(
         address endpoint_,
         address usdai_,
         address stakedUsdai_,
         address usdaiOAdapter_,
-        address stakedUsdaiOAdapter_,
-        address usdaiQueuedDepositor_
+        address stakedUsdaiOAdapter_
     ) {
         _disableInitializers();
 
@@ -105,7 +97,6 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
         _stakedUsdai = IStakedUSDai(stakedUsdai_);
         _usdaiOAdapter = IOFT(usdaiOAdapter_);
         _stakedUsdaiOAdapter = IOFT(stakedUsdaiOAdapter_);
-        _usdaiQueuedDepositor = IUSDaiQueuedDepositor(usdaiQueuedDepositor_);
     }
 
     /*------------------------------------------------------------------------*/
@@ -300,47 +291,6 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
     }
 
     /**
-     * @notice Deposit the deposit token with the queued depositor
-     * @param depositToken Deposit token
-     * @param depositAmount Deposit token amount
-     * @param data Additional compose data
-     * @param srcEid Source EID
-     * @return success True if the queued deposit was successful, false otherwise
-     */
-    function _queuedDeposit(
-        address depositToken,
-        uint256 depositAmount,
-        bytes memory data,
-        uint32 srcEid
-    ) internal returns (bool) {
-        /* Decode the message */
-        (IUSDaiQueuedDepositor.QueueType queueType, address recipient, uint32 dstEid) =
-            abi.decode(data, (IUSDaiQueuedDepositor.QueueType, address, uint32));
-
-        /* Validate the recipient is not blacklisted */
-        if (_usdai.isBlacklisted(recipient)) {
-            _refund(IERC20(depositToken), recipient, depositAmount, "QueuedDeposit", "Blacklisted recipient");
-
-            return false;
-        }
-
-        /* Approve the queued depositor contract to spend the deposit token */
-        IERC20(depositToken).forceApprove(address(_usdaiQueuedDepositor), depositAmount);
-
-        /* Deposit the deposit token into queued depositor */
-        try _usdaiQueuedDepositor.deposit(queueType, depositToken, depositAmount, recipient, srcEid, dstEid) {
-            /* Emit the queued deposit event */
-            emit ComposerQueuedDeposit(queueType, depositToken, recipient, depositAmount);
-        } catch (bytes memory reason) {
-            _refund(IERC20(depositToken), recipient, depositAmount, "QueuedDeposit", reason);
-
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
      * @notice Stake USDai
      * @param depositToken Deposit token (must be USDai)
      * @param depositAmount USDai amount
@@ -462,8 +412,6 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
             _deposit(depositToken, amountLD, data);
         } else if (actionType == ActionType.DepositAndStake) {
             _depositAndStake(depositToken, amountLD, data);
-        } else if (actionType == ActionType.QueuedDeposit) {
-            _queuedDeposit(depositToken, amountLD, data, OFTComposeMsgCodec.srcEid(message));
         } else if (actionType == ActionType.Stake) {
             _stake(depositToken, amountLD, data);
         } else {
@@ -487,8 +435,6 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
             if (!_deposit(depositToken, depositAmount, data)) revert DepositFailed();
         } else if (actionType == ActionType.DepositAndStake) {
             if (!_depositAndStake(depositToken, depositAmount, data)) revert DepositAndStakeFailed();
-        } else if (actionType == ActionType.QueuedDeposit) {
-            if (!_queuedDeposit(depositToken, depositAmount, data, 0)) revert QueuedDepositFailed();
         } else if (actionType == ActionType.Stake) {
             if (!_stake(depositToken, depositAmount, data)) revert StakeFailed();
         } else {

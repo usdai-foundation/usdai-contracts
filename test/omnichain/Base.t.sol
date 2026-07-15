@@ -29,8 +29,6 @@ import {TestHelperOz5} from "@layerzerolabs/test-devtools-evm-foundry/contracts/
 
 // Implementation imports
 import {OUSDaiUtility} from "src/omnichain/OUSDaiUtility.sol";
-import {USDaiQueuedDepositor} from "src/queuedDepositor/USDaiQueuedDepositor.sol";
-import {ReceiptToken} from "src/queuedDepositor/ReceiptToken.sol";
 
 // Mock imports
 import {MockUSDai} from "../mocks/MockUSDai.sol";
@@ -40,9 +38,6 @@ import {MockLoanRouter} from "../mocks/MockLoanRouter.sol";
 // Interface imports
 import {IUSDai} from "src/interfaces/IUSDai.sol";
 import {IStakedUSDai} from "src/interfaces/IStakedUSDai.sol";
-import {IUSDaiQueuedDepositor} from "src/interfaces/IUSDaiQueuedDepositor.sol";
-
-import {TestERC20} from "../tokens/TestERC20.sol";
 
 /**
  * @title Omnichain Base test setup
@@ -53,16 +48,12 @@ import {TestERC20} from "../tokens/TestERC20.sol";
 abstract contract OmnichainBaseTest is TestHelperOz5 {
     using OptionsBuilder for bytes;
 
-    IUSDaiQueuedDepositor internal usdaiQueuedDepositor;
-
     uint32 internal usdtHomeEid = 1;
     uint32 internal usdtAwayEid = 2;
     uint32 internal usdaiHomeEid = 3;
     uint32 internal usdaiAwayEid = 4;
     uint32 internal stakedUsdaiHomeEid = 5;
     uint32 internal stakedUsdaiAwayEid = 6;
-
-    TestERC20 internal usdtHomeToken6Decimals;
 
     OToken internal usdtHomeToken;
     OToken internal usdtAwayToken;
@@ -87,9 +78,6 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
 
     address internal user = address(0x1);
     address internal blacklistedUser = address(0x2);
-
-    address internal queuedUsdaiToken;
-    address internal queuedStakedUsdaiToken;
 
     function setUp() public virtual override {
         // Call the base setup function from the TestHelperOz5 contract
@@ -131,9 +119,6 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
         OToken usdtAwayTokenImpl = new OToken(address(0));
         OToken usdaiAwayTokenImpl = new OToken(address(0));
         OToken stakedUsdaiAwayTokenImpl = new OToken(address(0));
-
-        vm.prank(user);
-        usdtHomeToken6Decimals = new TestERC20("USDT Home Token", "USDT", 6, initialBalance / 1e12);
 
         // Deploy USDT proxies
         TransparentUpgradeableProxy usdtHomeTokenProxy = new TransparentUpgradeableProxy(
@@ -279,47 +264,6 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
             "" // No additional initialization data
         );
 
-        // Deploy receipt tokens
-        ReceiptToken receiptTokenImpl = new ReceiptToken();
-
-        // Deploy usdai queued depositor
-        address usdaiQueuedDepositorImpl = address(
-            new USDaiQueuedDepositor(
-                address(usdai),
-                address(stakedUsdai),
-                address(usdaiHomeOAdapter),
-                address(stakedUsdaiHomeOAdapter),
-                address(receiptTokenImpl),
-                address(oUsdaiUtility)
-            )
-        );
-
-        /* Deploy usdai queued depositor proxy */
-        address[] memory whitelistedTokens = new address[](2);
-        whitelistedTokens[0] = address(usdtHomeToken);
-        whitelistedTokens[1] = address(usdtHomeToken6Decimals);
-        uint256[] memory minAmounts = new uint256[](2);
-        minAmounts[0] = 1_000_000 * 1e18;
-        minAmounts[1] = 1_000_000 * 1e6;
-        TransparentUpgradeableProxy usdaiQueuedDepositorProxy = new TransparentUpgradeableProxy(
-            usdaiQueuedDepositorImpl,
-            address(this),
-            abi.encodeWithSignature(
-                "initialize(address,address[],uint256[])", address(this), whitelistedTokens, minAmounts
-            )
-        );
-        usdaiQueuedDepositor = USDaiQueuedDepositor(address(usdaiQueuedDepositorProxy));
-        AccessControl(address(usdaiQueuedDepositor)).grantRole(keccak256("CONTROLLER_ADMIN_ROLE"), address(this));
-        queuedUsdaiToken = address(usdaiQueuedDepositor.queuedUSDaiToken());
-        queuedStakedUsdaiToken = address(usdaiQueuedDepositor.queuedStakedUSDaiToken());
-        usdaiQueuedDepositor.updateDepositCap(type(uint256).max, true);
-        usdaiQueuedDepositor.updateDepositEidWhitelist(0, 0, true);
-        usdaiQueuedDepositor.updateDepositEidWhitelist(0, usdtAwayEid, true);
-        usdaiQueuedDepositor.updateDepositEidWhitelist(0, usdaiAwayEid, true);
-        usdaiQueuedDepositor.updateDepositEidWhitelist(0, stakedUsdaiAwayEid, true);
-        usdaiQueuedDepositor.updateDepositEidWhitelist(usdtAwayEid, usdtHomeEid, true);
-        usdaiQueuedDepositor.updateDepositEidWhitelist(usdtAwayEid, usdtAwayEid, true);
-
         // Redeploy omnichain tokens
         usdtHomeTokenImpl = new OToken(address(usdtHomeOAdapter));
         usdtAwayTokenImpl = new OToken(address(usdtAwayOAdapter));
@@ -381,8 +325,7 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
             address(usdai),
             address(stakedUsdai),
             address(usdaiHomeOAdapter),
-            address(stakedUsdaiHomeOAdapter),
-            address(usdaiQueuedDepositor)
+            address(stakedUsdaiHomeOAdapter)
         );
         TransparentUpgradeableProxy oUsdaiUtilityProxy = new TransparentUpgradeableProxy(
             address(oUsdaiUtilityImpl),
@@ -390,22 +333,6 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
             abi.encodeWithSignature("initialize(address,address[])", address(this), oAdaptersUtility)
         );
         oUsdaiUtility = OUSDaiUtility(payable(address(oUsdaiUtilityProxy)));
-
-        // Redeploy USDaiQueuedDepositor now with correct oUsdaiUtility address
-        USDaiQueuedDepositor newImpl = new USDaiQueuedDepositor(
-            address(usdai),
-            address(stakedUsdai),
-            address(usdaiHomeOAdapter),
-            address(stakedUsdaiHomeOAdapter),
-            address(receiptTokenImpl),
-            address(oUsdaiUtility)
-        );
-        proxyAdmin = address(uint160(uint256(vm.load(address(usdaiQueuedDepositorProxy), ERC1967Utils.ADMIN_SLOT))));
-        ProxyAdmin(proxyAdmin).upgradeAndCall(
-            ITransparentUpgradeableProxy(address(usdaiQueuedDepositorProxy)),
-            address(newImpl),
-            "" // No additional initialization data
-        );
 
         // Mint tokens to users
         vm.startPrank(address(usdtAwayOAdapter));
