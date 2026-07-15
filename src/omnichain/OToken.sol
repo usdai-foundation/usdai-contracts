@@ -75,9 +75,9 @@ contract OToken is
     function initialize(string memory name_, string memory symbol_, address admin) external initializer {
         __ERC20_init(name_, symbol_);
         __ERC20Permit_init(name_);
-        __Multicall_init();
         __ReentrancyGuard_init();
         __AccessControl_init();
+        __Multicall_init();
         __Pausable_init();
 
         /* Grant roles */

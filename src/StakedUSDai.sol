@@ -113,8 +113,9 @@ contract StakedUSDai is
         __ERC20_init("Staked USDai", "sUSDai");
         __ERC20Permit_init("Staked USDai");
         __Multicall_init();
-        __ReentrancyGuard_init();
+        __Pausable_init();
         __AccessControl_init();
+        __ReentrancyGuard_init();
 
         /* Grant roles */
         _grantRole(DEFAULT_ADMIN_ROLE, admin);

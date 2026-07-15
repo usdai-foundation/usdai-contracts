@@ -178,9 +178,11 @@ contract USDai is
     function initialize(
         address admin
     ) external initializer {
+        __ERC165_init();
         __ERC20_init("USDai", "USDai");
         __ERC20Permit_init("USDai");
         __Multicall_init();
+        __Pausable_init();
         __ReentrancyGuard_init();
         __AccessControl_init();
 

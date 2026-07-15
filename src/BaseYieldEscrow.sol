@@ -82,8 +82,8 @@ contract BaseYieldEscrow is IBaseYieldEscrow, AccessControlUpgradeable, Reentran
     function initialize(
         address admin
     ) external initializer {
-        __ReentrancyGuard_init();
         __AccessControl_init();
+        __ReentrancyGuard_init();
 
         /* Grant roles */
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
