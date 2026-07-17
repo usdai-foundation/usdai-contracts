@@ -105,6 +105,7 @@ abstract contract BaseTest is Test {
         address payable admin;
         address payable manager;
         address payable feeRecipient;
+        address payable adminFeeRecipient;
         address payable borrower;
         address payable mockOAdapter;
     }
@@ -139,12 +140,23 @@ abstract contract BaseTest is Test {
             admin: createUser("admin"),
             manager: createUser("manager"),
             feeRecipient: createUser("feeRecipient"),
+            adminFeeRecipient: createUser("adminFeeRecipient"),
             borrower: createUser("borrower"),
             mockOAdapter: createUser("mockOAdapter")
         });
 
         /* Fund users */
         fundUsers();
+
+        /* Stub the hardcoded StakedUSDai used by USDai.isBlacklisted on the fork */
+        vm.etch(0x0B2b2B2076d95dda7817e785989fE353fe955ef9, hex"00");
+
+        /* Point its admin fee recipient at the test recipient */
+        vm.mockCall(
+            0x0B2b2B2076d95dda7817e785989fE353fe955ef9,
+            abi.encodeWithSelector(StakedUSDai.adminFeeRecipient.selector),
+            abi.encode(users.adminFeeRecipient)
+        );
 
         /* Deploy contracts */
         deployNft();
@@ -361,7 +373,7 @@ abstract contract BaseTest is Test {
         StakedUSDai stakedUsdaiImpl = new StakedUSDai(
             address(usdai),
             address(loanRouter),
-            address(users.admin),
+            address(users.adminFeeRecipient),
             uint64(block.timestamp),
             100,
             100,
