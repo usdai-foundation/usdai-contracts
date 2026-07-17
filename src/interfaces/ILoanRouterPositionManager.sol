@@ -57,12 +57,6 @@ interface ILoanRouterPositionManager {
      */
     event LoanDepositTimelockCancelled(bytes32 indexed loanTermsHash, uint256 usdaiAmount);
 
-    /**
-     * @notice Admin fee withdrawn
-     * @param adminFeeAmount Admin fee amount
-     */
-    event AdminFeeWithdrawn(uint256 adminFeeAmount);
-
     /*------------------------------------------------------------------------*/
     /* Getter */
     /*------------------------------------------------------------------------*/
@@ -79,13 +73,6 @@ interface ILoanRouterPositionManager {
      * @return Accrued loan interest balance
      */
     function loanRouterBalances() external view returns (uint256, uint256);
-
-    /**
-     * @notice Repayment balances
-     * @return Repayment balance
-     * @return Admin fee balance
-     */
-    function repaymentBalances() external view returns (uint256, uint256);
 
     /**
      * @notice Accrual rate
@@ -127,13 +114,5 @@ interface ILoanRouterPositionManager {
      */
     function cancelLoanDepositTimelock(
         bytes32 loanTermsHash
-    ) external;
-
-    /**
-     * @notice Withdraw admin fee
-     * @param adminFeeAmount Admin fee amount
-     */
-    function withdrawAdminFee(
-        uint256 adminFeeAmount
     ) external;
 }

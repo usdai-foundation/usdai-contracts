@@ -181,16 +181,6 @@ abstract contract LoanRouterPositionManager is
     /**
      * @inheritdoc ILoanRouterPositionManager
      */
-    function repaymentBalances() external view returns (uint256, uint256) {
-        return (
-            _getLoansStorage().repaymentBalances[address(_usdai)].repayment,
-            _getLoansStorage().repaymentBalances[address(_usdai)].adminFee
-        );
-    }
-
-    /**
-     * @inheritdoc ILoanRouterPositionManager
-     */
     function accrualRate() external view returns (uint256) {
         return _getLoansStorage().interestAccruals[address(_usdai)].rate;
     }
@@ -274,11 +264,11 @@ abstract contract LoanRouterPositionManager is
         /* Handle interest accrued */
         LoanRouterPositionManagerLogic.escrowWithdrawn(
             _getDepositsStorage(),
-            _getLoansStorage(),
             address(_usdai),
             _escrowTimelock,
-            interestAmount,
-            _loanRouterAdminFeeRate
+            _loanRouterAdminFeeRate,
+            _adminFeeRecipient,
+            interestAmount
         );
 
         /* Emit LoanEscrowTimelockWithdrawn */
@@ -301,9 +291,7 @@ abstract contract LoanRouterPositionManager is
         uint256 refundDepositAmount
     ) external nonReentrant {
         /* Handle deposit timelock withdrawn */
-        LoanRouterPositionManagerLogic.depositWithdrawn(
-            _getDepositsStorage(), _getLoansStorage(), address(_usdai), _depositTimelock, refundDepositAmount
-        );
+        LoanRouterPositionManagerLogic.depositWithdrawn(_getDepositsStorage(), _depositTimelock, refundDepositAmount);
     }
 
     /*------------------------------------------------------------------------*/
@@ -350,8 +338,9 @@ abstract contract LoanRouterPositionManager is
             loanBalance,
             principal + prepayment,
             interest,
+            _loanRouterV2,
             _loanRouterAdminFeeRate,
-            _loanRouterV2
+            _adminFeeRecipient
         );
     }
 
@@ -400,8 +389,9 @@ abstract contract LoanRouterPositionManager is
             trancheIndex,
             principal,
             interest,
+            _loanRouterV2,
             _loanRouterAdminFeeRate,
-            _loanRouterV2
+            _adminFeeRecipient
         );
     }
 
@@ -496,7 +486,7 @@ abstract contract LoanRouterPositionManager is
 
         /* Handle interest accrued */
         LoanRouterPositionManagerLogic.escrowCancelled(
-            _getDepositsStorage(), _getLoansStorage(), address(_usdai), interestAmount, _loanRouterAdminFeeRate
+            _getDepositsStorage(), address(_usdai), _loanRouterAdminFeeRate, _adminFeeRecipient, interestAmount
         );
 
         /* Emit LoanEscrowTimelockCancelled */
@@ -520,20 +510,5 @@ abstract contract LoanRouterPositionManager is
 
         /* Emit LoanDepositTimelockCancelled */
         emit LoanDepositTimelockCancelled(loanTermsHash, usdaiAmount);
-    }
-
-    /**
-     * @inheritdoc ILoanRouterPositionManager
-     */
-    function withdrawAdminFee(
-        uint256 adminFeeAmount
-    ) external onlyRole(STRATEGY_ADMIN_ROLE) nonReentrant {
-        /* Handle withdraw admin fee */
-        LoanRouterPositionManagerLogic.withdrawAdminFee(
-            _getLoansStorage(), address(_usdai), _adminFeeRecipient, adminFeeAmount
-        );
-
-        /* Emit AdminFeeWithdrawn */
-        emit AdminFeeWithdrawn(adminFeeAmount);
     }
 }

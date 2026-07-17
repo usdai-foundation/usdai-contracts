@@ -147,6 +147,9 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         uint256 expectedAdminFee = expectedInterest * LOAN_ROUTER_ADMIN_FEE_RATE / BASIS_POINTS_SCALE;
         uint256 expectedRepayment = expectedInterest - expectedAdminFee;
 
+        /* Capture the admin fee recipient balance before the cancel */
+        uint256 adminFeeBalanceBefore = IERC20(address(usdai)).balanceOf(users.adminFeeRecipient);
+
         vm.prank(users.manager);
         stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
 
@@ -154,12 +157,16 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         (uint256 depositBalanceAfter,) = stakedUsdai.balances();
         assertApproxEqAbs(depositBalanceAfter - depositBalanceBefore, expectedRepayment, 1);
 
-        (, uint256 adminFee) = stakedUsdai.repaymentBalances();
-        assertApproxEqAbs(adminFee, expectedAdminFee, 1);
+        /* The admin fee is transferred straight to the recipient */
+        uint256 adminFeeBalanceAfter = IERC20(address(usdai)).balanceOf(users.adminFeeRecipient);
+        assertApproxEqAbs(adminFeeBalanceAfter - adminFeeBalanceBefore, expectedAdminFee, 1);
     }
 
     function test__CancelEscrowLoanTimelock_ZeroInterest_WhenCancelledImmediately() public {
         (uint256 depositBalanceBefore,) = stakedUsdai.balances();
+
+        /* Capture the admin fee recipient balance before the cancel */
+        uint256 adminFeeBalanceBefore = IERC20(address(usdai)).balanceOf(users.admin);
 
         _depositEscrow();
         vm.prank(users.manager);
@@ -169,8 +176,9 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         (uint256 depositBalanceAfter,) = stakedUsdai.balances();
         assertEq(depositBalanceAfter, depositBalanceBefore, "no interest should accrue with zero elapsed time");
 
-        (, uint256 adminFee) = stakedUsdai.repaymentBalances();
-        assertEq(adminFee, 0, "no admin fee without interest");
+        /* No admin fee is transferred without interest */
+        uint256 adminFeeBalanceAfter = IERC20(address(usdai)).balanceOf(users.admin);
+        assertEq(adminFeeBalanceAfter, adminFeeBalanceBefore, "no admin fee without interest");
     }
 
     function test__CancelEscrowLoanTimelock_EmitsEvent() public {
@@ -205,19 +213,26 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
 
         (uint256 depositBalanceBefore,) = stakedUsdai.balances();
 
+        /* Capture the admin fee recipient balance before the withdraw */
+        uint256 adminFeeBalanceBefore = IERC20(address(usdai)).balanceOf(users.adminFeeRecipient);
+
         vm.prank(address(loanRouter));
         escrowTimelock.withdraw(LOAN_HASH, address(usdai), DEPOSIT_AMOUNT);
 
         (uint256 depositBalanceAfter,) = stakedUsdai.balances();
         assertApproxEqAbs(depositBalanceAfter - depositBalanceBefore, expectedRepayment, 1);
 
-        (, uint256 adminFee) = stakedUsdai.repaymentBalances();
-        assertApproxEqAbs(adminFee, expectedAdminFee, 1);
+        /* The admin fee is transferred straight to the recipient */
+        uint256 adminFeeBalanceAfter = IERC20(address(usdai)).balanceOf(users.adminFeeRecipient);
+        assertApproxEqAbs(adminFeeBalanceAfter - adminFeeBalanceBefore, expectedAdminFee, 1);
     }
 
     function test__OnEscrowWithdrawn_ZeroInterest_WhenWithdrawnImmediately() public {
         _depositEscrow();
         (uint256 depositBalanceBefore,) = stakedUsdai.balances();
+
+        /* Capture the admin fee recipient balance before the withdraw */
+        uint256 adminFeeBalanceBefore = IERC20(address(usdai)).balanceOf(users.admin);
 
         vm.prank(address(loanRouter));
         escrowTimelock.withdraw(LOAN_HASH, address(usdai), DEPOSIT_AMOUNT);
@@ -225,8 +240,9 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         (uint256 depositBalanceAfter,) = stakedUsdai.balances();
         assertEq(depositBalanceAfter, depositBalanceBefore, "no interest with zero elapsed time");
 
-        (, uint256 adminFee) = stakedUsdai.repaymentBalances();
-        assertEq(adminFee, 0, "no admin fee without interest");
+        /* No admin fee is transferred without interest */
+        uint256 adminFeeBalanceAfter = IERC20(address(usdai)).balanceOf(users.admin);
+        assertEq(adminFeeBalanceAfter, adminFeeBalanceBefore, "no admin fee without interest");
     }
 
     function test__OnEscrowWithdrawn_TransfersInterestFromEscrowAdmin() public {
