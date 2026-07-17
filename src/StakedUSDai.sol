@@ -244,6 +244,13 @@ contract StakedUSDai is
         return (_getDepositsStorage().balance, _getRedemptionStateStorage().balance);
     }
 
+    /**
+     * @inheritdoc IStakedUSDai
+     */
+    function adminFeeRecipient() external view returns (address) {
+        return _adminFeeRecipient;
+    }
+
     /*------------------------------------------------------------------------*/
     /* Internal helpers  */
     /*------------------------------------------------------------------------*/

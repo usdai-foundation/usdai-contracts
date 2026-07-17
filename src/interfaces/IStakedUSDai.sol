@@ -163,6 +163,12 @@ interface IStakedUSDai is IBasePositionManager {
     function balances() external view returns (uint256, uint256);
 
     /**
+     * @notice Get admin fee recipient
+     * @return Admin fee recipient
+     */
+    function adminFeeRecipient() external view returns (address);
+
+    /**
      * @notice Get deposit share price
      * @return Deposit share price
      */

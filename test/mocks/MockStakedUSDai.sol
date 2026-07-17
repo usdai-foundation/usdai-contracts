@@ -249,6 +249,13 @@ contract MockStakedUSDai is
         return (_usdai.balanceOf(address(this)), _getRedemptionStateStorage().balance);
     }
 
+    /**
+     * @inheritdoc IStakedUSDai
+     */
+    function adminFeeRecipient() external view returns (address) {
+        return _adminFeeRecipient;
+    }
+
     /*------------------------------------------------------------------------*/
     /* Internal helpers  */
     /*------------------------------------------------------------------------*/
