@@ -58,12 +58,6 @@ interface ILoanRouterPositionManager {
     event LoanDepositTimelockCancelled(bytes32 indexed loanTermsHash, uint256 usdaiAmount);
 
     /**
-     * @notice Loan repayment deposited
-     * @param depositAmount Deposit amount
-     */
-    event LoanRepaymentDeposited(uint256 depositAmount);
-
-    /**
      * @notice Admin fee withdrawn
      * @param adminFeeAmount Admin fee amount
      */
@@ -80,12 +74,11 @@ interface ILoanRouterPositionManager {
     function depositTimelockBalance() external view returns (uint256);
 
     /**
-     * @notice Loan router balance
-     * @return Repayment loan balance
+     * @notice Loan router balances
      * @return Pending loan balance
      * @return Accrued loan interest balance
      */
-    function loanRouterBalances() external view returns (uint256, uint256, uint256);
+    function loanRouterBalances() external view returns (uint256, uint256);
 
     /**
      * @notice Repayment balances
@@ -134,14 +127,6 @@ interface ILoanRouterPositionManager {
      */
     function cancelLoanDepositTimelock(
         bytes32 loanTermsHash
-    ) external;
-
-    /**
-     * @notice Deposit loan repayment
-     * @param depositAmount Deposit amount
-     */
-    function depositLoanRepayment(
-        uint256 depositAmount
     ) external;
 
     /**

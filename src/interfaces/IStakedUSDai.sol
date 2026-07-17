@@ -156,6 +156,13 @@ interface IStakedUSDai is IBasePositionManager {
     function nav() external view returns (uint256);
 
     /**
+     * @notice Get deposit and redemption balances
+     * @return Deposit balance
+     * @return Redemption balance
+     */
+    function balances() external view returns (uint256, uint256);
+
+    /**
      * @notice Get deposit share price
      * @return Deposit share price
      */

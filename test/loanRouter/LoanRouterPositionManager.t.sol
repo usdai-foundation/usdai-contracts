@@ -65,8 +65,7 @@ contract LoanRouterPositionManagerTest is BaseLoanRouterTest {
 
     function test__InitialBalances() public view {
         assertEq(stakedUsdai.depositTimelockBalance(), 0, "depositTimelockBalance not 0");
-        (uint256 repayment, uint256 pending, uint256 accrued) = stakedUsdai.loanRouterBalances();
-        assertEq(repayment, 0, "repaymentBalance not 0");
+        (uint256 pending, uint256 accrued) = stakedUsdai.loanRouterBalances();
         assertEq(pending, 0, "pendingBalance not 0");
         assertEq(accrued, 0, "accruedBalance not 0");
         assertEq(stakedUsdai.accrualRate(), 0, "accrualRate not 0");
@@ -179,7 +178,7 @@ contract LoanRouterPositionManagerTest is BaseLoanRouterTest {
      *
      *         StakedUSDai is both the tranche lender (so onLoanOriginated registers the
      *         currency and pending balance) and the fee recipient (so onLoanFeePaid books
-     *         the fee into the repayment pool). The fee equals the FeeSpec options amount,
+     *         the fee into the deposit balance). The fee equals the FeeSpec options amount,
      *         which createLoanTerms sets to principal / 100. USDai (18 decimals) needs no
      *         oracle conversion, so the booked fee and pending balance are exact.
      * @return fee Origination fee paid, in USDai (currency) units
@@ -225,10 +224,11 @@ contract LoanRouterPositionManagerTest is BaseLoanRouterTest {
         loanRouter.originate(loanTerms, depositInfos, new bytes[](0));
     }
 
-    function test__OnLoanFeePaid_OriginationFeeBookedIntoRepaymentPool() public {
+    function test__OnLoanFeePaid_OriginationFeeBookedIntoDepositBalance() public {
         uint256 principal = 1_000 ether;
 
         uint256 usdaiBefore = IERC20(address(usdai)).balanceOf(address(stakedUsdai));
+        (uint256 depositBalanceBefore,) = stakedUsdai.balances();
 
         uint256 fee = _originateLoanWithOriginationFee(principal);
 
@@ -243,11 +243,12 @@ contract LoanRouterPositionManagerTest is BaseLoanRouterTest {
             "fee not transferred to recipient"
         );
 
-        // onLoanFeePaid booked the fee into the repayment pool; USDai needs no oracle conversion
-        (uint256 repayment, uint256 pending,) = stakedUsdai.loanRouterBalances();
-        assertEq(repayment, fee, "fee not booked into repayment pool");
+        // onLoanFeePaid booked the fee into the deposit balance; USDai needs no oracle conversion
+        (uint256 depositBalanceAfter,) = stakedUsdai.balances();
+        assertEq(depositBalanceAfter - depositBalanceBefore, fee, "fee not booked into deposit balance");
 
         // The principal remains tracked as pending loan balance (registered by onLoanOriginated)
+        (uint256 pending,) = stakedUsdai.loanRouterBalances();
         assertEq(pending, principal, "principal not tracked as pending");
     }
 

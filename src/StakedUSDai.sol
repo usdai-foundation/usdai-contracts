@@ -237,6 +237,13 @@ contract StakedUSDai is
         return _getBridgedSupplyStorage().bridgedSupply;
     }
 
+    /**
+     * @inheritdoc IStakedUSDai
+     */
+    function balances() external view returns (uint256, uint256) {
+        return (_getDepositsStorage().balance, _getRedemptionStateStorage().balance);
+    }
+
     /*------------------------------------------------------------------------*/
     /* Internal helpers  */
     /*------------------------------------------------------------------------*/

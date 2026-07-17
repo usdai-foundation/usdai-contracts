@@ -119,12 +119,14 @@ library LoanRouterPositionManagerLogic {
 
     /**
      * @notice Handle interest accrued hook
+     * @param depositsStorage Deposits storage
      * @param loansStorage Loans storage
      * @param usdai USDai
      * @param interest Interest amount
      * @param adminFeeRate Admin fee rate
      */
     function _escrowInterestAccrued(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
         LoanRouterPositionManager.Loans storage loansStorage,
         address usdai,
         uint256 interest,
@@ -142,8 +144,8 @@ library LoanRouterPositionManagerLogic {
         /* Update repayment balances */
         loansStorage.repaymentBalances[usdai].adminFee += adminFee;
 
-        /* Update repayment balance with interest amount minus admin fee */
-        loansStorage.repaymentBalances[usdai].repayment += interest - adminFee;
+        /* Update deposit balance with interest amount minus admin fee */
+        depositsStorage.balance += interest - adminFee;
     }
 
     /*------------------------------------------------------------------------*/
@@ -154,14 +156,13 @@ library LoanRouterPositionManagerLogic {
      * @notice Get loan router balances
      * @param loansStorage Loans storage
      * @param usdai USDai
-     * @return Claimable loan balance
      * @return Pending loan balance
      * @return Accrued loan interest balance
      */
     function loanRouterBalances(
         LoanRouterPositionManager.Loans storage loansStorage,
         address usdai
-    ) external view returns (uint256, uint256, uint256) {
+    ) external view returns (uint256, uint256) {
         /* Get USDai accrual */
         LoanRouterPositionManager.Accrual storage accrual = loansStorage.interestAccruals[usdai];
 
@@ -169,7 +170,7 @@ library LoanRouterPositionManagerLogic {
         uint256 accrued = (accrual.accrued + accrual.rate * (block.timestamp - accrual.timestamp)) / FIXED_POINT_SCALE;
 
         /* Return loan router balance */
-        return (loansStorage.repaymentBalances[usdai].repayment, loansStorage.pendingBalances[usdai], accrued);
+        return (loansStorage.pendingBalances[usdai], accrued);
     }
 
     /*------------------------------------------------------------------------*/
@@ -178,12 +179,14 @@ library LoanRouterPositionManagerLogic {
 
     /**
      * @notice Handle deposit timelock withdrawn hook
+     * @param depositsStorage Deposits storage
      * @param loansStorage Loans storage
      * @param usdai USDai
      * @param depositTimelock Deposit timelock
      * @param refundedAmount Refunded amount
      */
     function depositWithdrawn(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
         LoanRouterPositionManager.Loans storage loansStorage,
         address usdai,
         address depositTimelock,
@@ -198,8 +201,8 @@ library LoanRouterPositionManagerLogic {
         /* Register USDai */
         loansStorage.currencyTokens.add(usdai);
 
-        /* Update repayment balance with refunded amount */
-        loansStorage.repaymentBalances[usdai].repayment += refundedAmount;
+        /* Update deposit balance with refunded amount */
+        depositsStorage.balance += refundedAmount;
     }
 
     /**
@@ -262,6 +265,7 @@ library LoanRouterPositionManagerLogic {
 
     /**
      * @notice Handle loan repayment hook (V2)
+     * @param depositsStorage Deposits storage
      * @param loansStorage Loans storage
      * @param loanTerms Loan terms
      * @param loanTermsHash Loan terms hash
@@ -273,6 +277,7 @@ library LoanRouterPositionManagerLogic {
      * @param loanRouter Loan router
      */
     function loanRepayment(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
         LoanRouterPositionManager.Loans storage loansStorage,
         ILoanRouterV2.LoanTermsV2 calldata loanTerms,
         bytes32 loanTermsHash,
@@ -295,8 +300,10 @@ library LoanRouterPositionManagerLogic {
         /* Adjust for rounding losses and rounding gains */
         principal = loanBalance == 0 ? loan.pendingBalance : Math.min(loan.pendingBalance, principal);
 
-        /* Update repayment balances */
-        loansStorage.repaymentBalances[loanTerms.currencyToken].repayment += principal + interest - adminFee;
+        /* Update deposit balance */
+        depositsStorage.balance += principal + interest - adminFee;
+
+        /* Update admin fee balance */
         loansStorage.repaymentBalances[loanTerms.currencyToken].adminFee += adminFee;
 
         /* Update total pending loan balances */
@@ -398,14 +405,14 @@ library LoanRouterPositionManagerLogic {
 
     /**
      * @notice Handle loan fee paid hook (V2)
-     * @param loansStorage Loans storage
+     * @param depositsStorage Deposits storage
      * @param loanTerms Loan terms
      * @param fee Fee paid
      * @param usdai USDai
      * @param loanRouter Loan router
      */
     function loanFeePaid(
-        LoanRouterPositionManager.Loans storage loansStorage,
+        StakedUSDaiStorage.Deposits storage depositsStorage,
         ILoanRouterV2.LoanTermsV2 calldata loanTerms,
         bytes32,
         uint8,
@@ -419,8 +426,8 @@ library LoanRouterPositionManagerLogic {
         /* Validate loan currency token is USDai */
         if (loanTerms.currencyToken != usdai) revert InvalidCurrencyToken();
 
-        /* Update repayment balances */
-        loansStorage.repaymentBalances[loanTerms.currencyToken].repayment += fee;
+        /* Update deposit balance */
+        depositsStorage.balance += fee;
     }
 
     /**
@@ -459,6 +466,7 @@ library LoanRouterPositionManagerLogic {
 
     /**
      * @notice Handle loan collateral liquidated hook (V2)
+     * @param depositsStorage Deposits storage
      * @param loansStorage Loans storage
      * @param loanTerms Loan terms
      * @param loanTermsHash Loan terms hash
@@ -469,6 +477,7 @@ library LoanRouterPositionManagerLogic {
      * @param loanRouter Loan router
      */
     function loanCollateralLiquidated(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
         LoanRouterPositionManager.Loans storage loansStorage,
         ILoanRouterV2.LoanTermsV2 calldata loanTerms,
         bytes32 loanTermsHash,
@@ -487,8 +496,10 @@ library LoanRouterPositionManagerLogic {
         /* Compute admin fee amount */
         uint256 adminFee = interest * adminFeeRate / BASIS_POINTS_SCALE;
 
-        /* Update repayment balances */
-        loansStorage.repaymentBalances[loanTerms.currencyToken].repayment += principal + interest - adminFee;
+        /* Update deposit balance */
+        depositsStorage.balance += principal + interest - adminFee;
+
+        /* Update admin fee balance */
         loansStorage.repaymentBalances[loanTerms.currencyToken].adminFee += adminFee;
 
         /* Subtract loan balance from pending balances storage */
@@ -506,22 +517,25 @@ library LoanRouterPositionManagerLogic {
 
     /**
      * @notice Handle escrow cancelled interest accrued hook
+     * @param depositsStorage Deposits storage
      * @param loansStorage Loans storage
      * @param usdai USDai
      * @param interest Interest amount
      * @param adminFeeRate Admin fee rate
      */
     function escrowCancelled(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
         LoanRouterPositionManager.Loans storage loansStorage,
         address usdai,
         uint256 interest,
         uint256 adminFeeRate
     ) external {
-        _escrowInterestAccrued(loansStorage, usdai, interest, adminFeeRate);
+        _escrowInterestAccrued(depositsStorage, loansStorage, usdai, interest, adminFeeRate);
     }
 
     /**
      * @notice Handle withdrawn escrow interest accrued hook
+     * @param depositsStorage Deposits storage
      * @param loansStorage Loans storage
      * @param usdai USDai
      * @param escrowTimelock Escrow timelock
@@ -529,6 +543,7 @@ library LoanRouterPositionManagerLogic {
      * @param adminFeeRate Admin fee rate
      */
     function escrowWithdrawn(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
         LoanRouterPositionManager.Loans storage loansStorage,
         address usdai,
         address escrowTimelock,
@@ -538,7 +553,7 @@ library LoanRouterPositionManagerLogic {
         /* Validate caller is escrow timelock */
         if (msg.sender != escrowTimelock) revert InvalidCaller();
 
-        _escrowInterestAccrued(loansStorage, usdai, interest, adminFeeRate);
+        _escrowInterestAccrued(depositsStorage, loansStorage, usdai, interest, adminFeeRate);
     }
 
     /**
@@ -572,7 +587,7 @@ library LoanRouterPositionManagerLogic {
         /* Approve USDai */
         IERC20(usdai).approve(timelock, usdaiAmount);
 
-        /* Update deposits balance */
+        /* Update deposit balance */
         depositsStorage.balance -= usdaiAmount;
 
         /* Update deposit timelock balance and amounts */
@@ -601,36 +616,11 @@ library LoanRouterPositionManagerLogic {
         /* Delete deposit timelock amount for loan terms hash */
         delete depositTimelockStorage.amounts[loanTermsHash];
 
-        /* Update deposits balance */
+        /* Update deposit balance */
         depositsStorage.balance += usdaiAmount;
 
         /* Return USDai amount */
         return usdaiAmount;
-    }
-
-    /**
-     * @notice Deposit loan repayment
-     * @param depositsStorage Deposits storage
-     * @param loansStorage Loans storage
-     * @param usdai USDai
-     * @param depositAmount Deposit amount
-     */
-    function depositLoanRepayment(
-        StakedUSDaiStorage.Deposits storage depositsStorage,
-        LoanRouterPositionManager.Loans storage loansStorage,
-        address usdai,
-        uint256 depositAmount
-    ) external {
-        /* Validate repayment balance */
-        if (depositAmount > loansStorage.repaymentBalances[usdai].repayment) {
-            revert PositionManager.InsufficientBalance();
-        }
-
-        /* Update repayment balances */
-        loansStorage.repaymentBalances[usdai].repayment -= depositAmount;
-
-        /* Update deposits balance */
-        depositsStorage.balance += depositAmount;
     }
 
     /**

@@ -138,7 +138,9 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         );
     }
 
-    function test__CancelEscrowLoanTimelock_InterestRoutedToRepaymentBalance() public {
+    function test__CancelEscrowLoanTimelock_InterestRoutedToDepositBalance() public {
+        (uint256 depositBalanceBefore,) = stakedUsdai.balances();
+
         _depositEscrow();
         warp(30 days);
         uint256 expectedInterest = _expectedInterest(30 days);
@@ -148,18 +150,26 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
         vm.prank(users.manager);
         stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
 
-        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances();
-        assertApproxEqAbs(repayment, expectedRepayment, 1);
+        /* Principal round-trips, so the deposit balance grows by the net interest */
+        (uint256 depositBalanceAfter,) = stakedUsdai.balances();
+        assertApproxEqAbs(depositBalanceAfter - depositBalanceBefore, expectedRepayment, 1);
+
+        (, uint256 adminFee) = stakedUsdai.repaymentBalances();
         assertApproxEqAbs(adminFee, expectedAdminFee, 1);
     }
 
     function test__CancelEscrowLoanTimelock_ZeroInterest_WhenCancelledImmediately() public {
+        (uint256 depositBalanceBefore,) = stakedUsdai.balances();
+
         _depositEscrow();
         vm.prank(users.manager);
         stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
 
-        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances();
-        assertEq(repayment, 0, "no interest should accrue with zero elapsed time");
+        /* Deposit balance returns to its starting value with zero elapsed time */
+        (uint256 depositBalanceAfter,) = stakedUsdai.balances();
+        assertEq(depositBalanceAfter, depositBalanceBefore, "no interest should accrue with zero elapsed time");
+
+        (, uint256 adminFee) = stakedUsdai.repaymentBalances();
         assertEq(adminFee, 0, "no admin fee without interest");
     }
 
@@ -186,28 +196,36 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
     /* onEscrowWithdrawn (via real EscrowTimelock.withdraw) */
     /*------------------------------------------------------------------------*/
 
-    function test__OnEscrowWithdrawn_InterestRoutedToRepaymentBalance() public {
+    function test__OnEscrowWithdrawn_InterestRoutedToDepositBalance() public {
         _depositEscrow();
         warp(30 days);
         uint256 expectedInterest = _expectedInterest(30 days);
         uint256 expectedAdminFee = expectedInterest * LOAN_ROUTER_ADMIN_FEE_RATE / BASIS_POINTS_SCALE;
         uint256 expectedRepayment = expectedInterest - expectedAdminFee;
 
+        (uint256 depositBalanceBefore,) = stakedUsdai.balances();
+
         vm.prank(address(loanRouter));
         escrowTimelock.withdraw(LOAN_HASH, address(usdai), DEPOSIT_AMOUNT);
 
-        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances();
-        assertApproxEqAbs(repayment, expectedRepayment, 1);
+        (uint256 depositBalanceAfter,) = stakedUsdai.balances();
+        assertApproxEqAbs(depositBalanceAfter - depositBalanceBefore, expectedRepayment, 1);
+
+        (, uint256 adminFee) = stakedUsdai.repaymentBalances();
         assertApproxEqAbs(adminFee, expectedAdminFee, 1);
     }
 
     function test__OnEscrowWithdrawn_ZeroInterest_WhenWithdrawnImmediately() public {
         _depositEscrow();
+        (uint256 depositBalanceBefore,) = stakedUsdai.balances();
+
         vm.prank(address(loanRouter));
         escrowTimelock.withdraw(LOAN_HASH, address(usdai), DEPOSIT_AMOUNT);
 
-        (uint256 repayment, uint256 adminFee) = stakedUsdai.repaymentBalances();
-        assertEq(repayment, 0, "no interest with zero elapsed time");
+        (uint256 depositBalanceAfter,) = stakedUsdai.balances();
+        assertEq(depositBalanceAfter, depositBalanceBefore, "no interest with zero elapsed time");
+
+        (, uint256 adminFee) = stakedUsdai.repaymentBalances();
         assertEq(adminFee, 0, "no admin fee without interest");
     }
 

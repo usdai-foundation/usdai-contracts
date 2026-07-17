@@ -174,7 +174,7 @@ abstract contract LoanRouterPositionManager is
     /**
      * @inheritdoc ILoanRouterPositionManager
      */
-    function loanRouterBalances() public view returns (uint256, uint256, uint256) {
+    function loanRouterBalances() public view returns (uint256, uint256) {
         return LoanRouterPositionManagerLogic.loanRouterBalances(_getLoansStorage(), address(_usdai));
     }
 
@@ -227,14 +227,13 @@ abstract contract LoanRouterPositionManager is
     function _assets(
         PositionManager.ValuationType valuationType
     ) internal view virtual override returns (uint256) {
-        (uint256 repaymentLoanBalance, uint256 pendingLoanBalance, uint256 accruedLoanInterestBalance) =
-            loanRouterBalances();
+        (uint256 pendingLoanBalance, uint256 accruedLoanInterestBalance) = loanRouterBalances();
 
         /* Get accrued escrow interest balance */
         uint256 accruedEscrowInterestBalance = IEscrowTimelock(_escrowTimelock).accrued();
 
         /* Return total assets in terms of USDai */
-        return depositTimelockBalance() + repaymentLoanBalance + pendingLoanBalance
+        return depositTimelockBalance() + pendingLoanBalance
             + (
                 (valuationType == PositionManager.ValuationType.OPTIMISTIC)
                     ? (accruedLoanInterestBalance - (accruedLoanInterestBalance * _loanRouterAdminFeeRate / BASIS_POINTS_SCALE))
@@ -274,7 +273,12 @@ abstract contract LoanRouterPositionManager is
     ) external nonReentrant {
         /* Handle interest accrued */
         LoanRouterPositionManagerLogic.escrowWithdrawn(
-            _getLoansStorage(), address(_usdai), _escrowTimelock, interestAmount, _loanRouterAdminFeeRate
+            _getDepositsStorage(),
+            _getLoansStorage(),
+            address(_usdai),
+            _escrowTimelock,
+            interestAmount,
+            _loanRouterAdminFeeRate
         );
 
         /* Emit LoanEscrowTimelockWithdrawn */
@@ -298,7 +302,7 @@ abstract contract LoanRouterPositionManager is
     ) external nonReentrant {
         /* Handle deposit timelock withdrawn */
         LoanRouterPositionManagerLogic.depositWithdrawn(
-            _getLoansStorage(), address(_usdai), _depositTimelock, refundDepositAmount
+            _getDepositsStorage(), _getLoansStorage(), address(_usdai), _depositTimelock, refundDepositAmount
         );
     }
 
@@ -338,6 +342,7 @@ abstract contract LoanRouterPositionManager is
         uint256 prepayment
     ) external nonReentrant {
         LoanRouterPositionManagerLogic.loanRepayment(
+            _getDepositsStorage(),
             _getLoansStorage(),
             loanTerms,
             loanTermsHash,
@@ -360,7 +365,7 @@ abstract contract LoanRouterPositionManager is
         uint256 fee
     ) external nonReentrant {
         LoanRouterPositionManagerLogic.loanFeePaid(
-            _getLoansStorage(), loanTerms, loanTermsHash, feeSpecIndex, fee, address(_usdai), _loanRouterV2
+            _getDepositsStorage(), loanTerms, loanTermsHash, feeSpecIndex, fee, address(_usdai), _loanRouterV2
         );
     }
 
@@ -388,6 +393,7 @@ abstract contract LoanRouterPositionManager is
         uint256 interest
     ) external nonReentrant {
         LoanRouterPositionManagerLogic.loanCollateralLiquidated(
+            _getDepositsStorage(),
             _getLoansStorage(),
             loanTerms,
             loanTermsHash,
@@ -490,7 +496,7 @@ abstract contract LoanRouterPositionManager is
 
         /* Handle interest accrued */
         LoanRouterPositionManagerLogic.escrowCancelled(
-            _getLoansStorage(), address(_usdai), interestAmount, _loanRouterAdminFeeRate
+            _getDepositsStorage(), _getLoansStorage(), address(_usdai), interestAmount, _loanRouterAdminFeeRate
         );
 
         /* Emit LoanEscrowTimelockCancelled */
@@ -514,21 +520,6 @@ abstract contract LoanRouterPositionManager is
 
         /* Emit LoanDepositTimelockCancelled */
         emit LoanDepositTimelockCancelled(loanTermsHash, usdaiAmount);
-    }
-
-    /**
-     * @inheritdoc ILoanRouterPositionManager
-     */
-    function depositLoanRepayment(
-        uint256 depositAmount
-    ) external onlyRole(STRATEGY_ADMIN_ROLE) nonReentrant {
-        /* Handle loan repayment deposit */
-        LoanRouterPositionManagerLogic.depositLoanRepayment(
-            _getDepositsStorage(), _getLoansStorage(), address(_usdai), depositAmount
-        );
-
-        /* Emit LoanRepaymentDeposited */
-        emit LoanRepaymentDeposited(depositAmount);
     }
 
     /**

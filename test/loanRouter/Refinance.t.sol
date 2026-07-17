@@ -206,7 +206,7 @@ contract RefinanceTest is BaseLoanRouterTest {
         uint256 navBefore = IStakedUSDai(address(stakedUsdai)).nav();
 
         /* Read aggregate balances before */
-        (uint256 repayBefore, uint256 pendingBefore,) = StakedUSDai(address(stakedUsdai)).loanRouterBalances();
+        (uint256 pendingBefore,) = StakedUSDai(address(stakedUsdai)).loanRouterBalances();
 
         /* Old loan is active before */
         (ILoanRouterV2.LoanStatus statusBefore,, uint64 originationBefore, uint256 routerBalanceBefore) =
@@ -265,10 +265,9 @@ contract RefinanceTest is BaseLoanRouterTest {
         uint256 expectedNetDrop = grossDrop - (grossDrop * LOAN_ROUTER_ADMIN_FEE_RATE / BASIS_POINTS_SCALE);
         assertApproxEqAbs(navBefore - IStakedUSDai(address(stakedUsdai)).nav(), expectedNetDrop, 1e13, "NAV drop wrong");
 
-        /* Aggregate pending and repayment balances are untouched by the refinance */
-        (uint256 repayAfter, uint256 pendingAfter,) = StakedUSDai(address(stakedUsdai)).loanRouterBalances();
+        /* Aggregate pending balance is untouched by the refinance */
+        (uint256 pendingAfter,) = StakedUSDai(address(stakedUsdai)).loanRouterBalances();
         assertEq(pendingAfter, pendingBefore, "aggregate pending changed");
-        assertEq(repayAfter, repayBefore, "aggregate repayment changed");
     }
 
     /**
