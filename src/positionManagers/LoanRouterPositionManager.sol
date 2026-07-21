@@ -35,8 +35,6 @@ abstract contract LoanRouterPositionManager is
     IDepositTimelockHooks,
     ILoanRouterV2Hooks
 {
-    using EnumerableSet for EnumerableSet.AddressSet;
-
     /*------------------------------------------------------------------------*/
     /* Constants */
     /*------------------------------------------------------------------------*/
@@ -404,10 +402,21 @@ abstract contract LoanRouterPositionManager is
         ILoanRouterV2.LoanTermsV2 calldata oldLoanTerms,
         ILoanRouterV2.LoanTermsV2 calldata newLoanTerms,
         bytes32 oldLoanTermsHash,
-        bytes32 newLoanTermsHash
+        bytes32 newLoanTermsHash,
+        uint8 trancheIndex,
+        uint256 cashOut,
+        uint256
     ) external nonReentrant {
         LoanRouterPositionManagerLogic.loanRefinanced(
-            _getLoansStorage(), oldLoanTerms, newLoanTerms, oldLoanTermsHash, newLoanTermsHash, _loanRouterV2
+            _getDepositTimelockStorage(),
+            _getLoansStorage(),
+            oldLoanTerms,
+            newLoanTerms,
+            oldLoanTermsHash,
+            newLoanTermsHash,
+            trancheIndex,
+            cashOut,
+            _loanRouterV2
         );
     }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.29;
 
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IUSDai} from "../interfaces/IUSDai.sol";
@@ -17,8 +17,6 @@ import {PositionManager} from "./PositionManager.sol";
  * @author USD.AI Foundation
  */
 library LoanRouterPositionManagerLogic {
-    using SafeERC20 for IERC20;
-
     /*------------------------------------------------------------------------*/
     /* Constants */
     /*------------------------------------------------------------------------*/
@@ -66,11 +64,6 @@ library LoanRouterPositionManagerLogic {
      * @notice Invalid currency token
      */
     error InvalidCurrencyToken();
-
-    /**
-     * @notice Invalid amount
-     */
-    error InvalidAmount();
 
     /*------------------------------------------------------------------------*/
     /* Internal helpers */
@@ -324,19 +317,25 @@ library LoanRouterPositionManagerLogic {
 
     /**
      * @notice Handle loan refinanced hook
+     * @param depositTimelockStorage Deposit timelock storage
      * @param loansStorage Loans storage
      * @param oldLoanTerms Old loan terms
      * @param newLoanTerms New loan terms
      * @param oldLoanTermsHash Old loan terms hash
      * @param newLoanTermsHash New loan terms hash
+     * @param trancheIndex Tranche index
+     * @param cashOut Cash out amount
      * @param loanRouter Loan router
      */
     function loanRefinanced(
+        LoanRouterPositionManager.DepositTimelock storage depositTimelockStorage,
         LoanRouterPositionManager.Loans storage loansStorage,
         ILoanRouterV2.LoanTermsV2 calldata oldLoanTerms,
         ILoanRouterV2.LoanTermsV2 calldata newLoanTerms,
         bytes32 oldLoanTermsHash,
         bytes32 newLoanTermsHash,
+        uint8 trancheIndex,
+        uint256 cashOut,
         address loanRouter
     ) external {
         /* Validate hook context */
@@ -356,15 +355,30 @@ library LoanRouterPositionManagerLogic {
         /* Revert if old and new loan currency tokens are different */
         if (oldLoanTerms.currencyToken != newLoanTerms.currencyToken) revert InvalidCurrencyToken();
 
-        /* Revert if old and new loan amounts are different */
-        if (oldLoanTerms.trancheSpecs[0].amount != newLoanTerms.trancheSpecs[0].amount) revert InvalidAmount();
+        /* If deposit timelock amount exists, subtract deposited USDai amount from deposit timelock balance */
+        if (depositTimelockStorage.amounts[newLoanTermsHash] != 0) {
+            depositTimelockStorage.balance -= depositTimelockStorage.amounts[newLoanTermsHash];
+
+            /* Delete deposit timelock amount for loan terms hash */
+            delete depositTimelockStorage.amounts[newLoanTermsHash];
+        }
 
         /* Get currency accrual state */
         LoanRouterPositionManager.Accrual storage currencyAccrual =
             loansStorage.interestAccruals[oldLoanTerms.currencyToken];
 
-        /* Remove old loan's past interest and bring currency accrual up to the current block */
-        _accrue(currencyAccrual, oldLoan.accrualRate, uint64(block.timestamp), oldLoan.lastRepaymentTimestamp);
+        /* Check if old loan is a legacy escrow loan */
+        (, uint256 repaymentCount,,) = ILoanRouterV2(loanRouter).loanState(oldLoanTermsHash);
+        bool isLegacyEscrowLoan = repaymentCount == 0;
+
+        /* Bring currency accrual up to the current block */
+        if (isLegacyEscrowLoan) {
+            /* Remove old loan's past interest */
+            _accrue(currencyAccrual, oldLoan.accrualRate, uint64(block.timestamp), oldLoan.lastRepaymentTimestamp);
+        } else {
+            /* Bring currency accrual up to the current block */
+            _accrue(currencyAccrual, 0, 0, 0);
+        }
 
         /* Remove old accrual rate from currency pool */
         currencyAccrual.rate -= oldLoan.accrualRate;
@@ -372,11 +386,14 @@ library LoanRouterPositionManagerLogic {
         /* Delete old loan entry */
         delete loansStorage.loan[oldLoanTermsHash];
 
-        /* Compute new accrual rate on the outstanding balance, not the original notional */
-        uint256 newAccrualRate = newLoanTerms.trancheSpecs[0].rate * oldLoan.pendingBalance;
+        /* Update total pending loan balance by the notional delta */
+        loansStorage.pendingBalances[oldLoanTerms.currencyToken] += cashOut;
 
-        /* Re-accrue the elapsed window at the new rate so the new loan keeps the old repayment timestamp */
-        currencyAccrual.accrued += newAccrualRate * (block.timestamp - oldLoan.lastRepaymentTimestamp);
+        /* Compute new pending balance */
+        uint256 newPendingBalance = oldLoan.pendingBalance + cashOut;
+
+        /* Compute new accrual rate on the outstanding balance */
+        uint256 newAccrualRate = newLoanTerms.trancheSpecs[trancheIndex].rate * newPendingBalance;
 
         /* Add new accrual rate to currency pool */
         currencyAccrual.rate += newAccrualRate;
@@ -384,8 +401,8 @@ library LoanRouterPositionManagerLogic {
         /* Create loan entry carrying the outstanding balance forward */
         loansStorage.loan[newLoanTermsHash] = LoanRouterPositionManager.Loan({
             accrualRate: newAccrualRate,
-            pendingBalance: oldLoan.pendingBalance,
-            lastRepaymentTimestamp: oldLoan.lastRepaymentTimestamp,
+            pendingBalance: newPendingBalance,
+            lastRepaymentTimestamp: isLegacyEscrowLoan ? uint64(block.timestamp) : oldLoan.lastRepaymentTimestamp,
             liquidationTimestamp: 0
         });
     }
