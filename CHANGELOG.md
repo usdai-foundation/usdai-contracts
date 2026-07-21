@@ -1,3 +1,7 @@
+* USDai v1.6 - 07/20/2026
+    * Remove swap adapters.
+    * Exclude admin fee recipient from blacklist.
+
 * StakedUSDai v1.11 - 07/20/2026
     * Remove price oracle.
     * Restore support for DepositTimelock.
