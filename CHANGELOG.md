@@ -1,3 +1,12 @@
+* StakedUSDai v1.11 - 07/20/2026
+    * Remove price oracle.
+    * Restore support for DepositTimelock.
+    * Automatically deposit loan repayments in loan hooks.
+    * Automatically transfer admin fees in loan hooks.
+    * Remove `depositLoanRepayment()` and `withdrawAdminFee()` APIs.
+    * Add `accrualRate()` getter.
+    * Add `adminFeeRecipient()` getter.
+
 * StakedUSDai v1.10 - 07/08/2026
     * Remove migration logic for LoanRouter v1.
     * Add support for LoanRouterV2 `onLoanRefinanced()` hook.
