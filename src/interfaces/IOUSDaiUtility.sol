@@ -17,7 +17,8 @@ interface IOUSDaiUtility {
         Deposit,
         DepositAndStake,
         QueuedDeposit, /* deprecated no-op, kept for enum ordinal stability */
-        Stake
+        Stake,
+        Withdraw
     }
 
     /*------------------------------------------------------------------------*/
@@ -38,6 +39,11 @@ interface IOUSDaiUtility {
      * @notice Deposit failed
      */
     error DepositFailed();
+
+    /**
+     * @notice Withdraw failed
+     */
+    error WithdrawFailed();
 
     /**
      * @notice Deposit and stake failed
@@ -67,6 +73,22 @@ interface IOUSDaiUtility {
         address indexed recipient,
         uint256 depositAmount,
         uint256 usdaiAmount
+    );
+
+    /**
+     * @notice Composer withdraw event
+     * @param dstEid Destination chain EID
+     * @param withdrawToken Withdraw token
+     * @param recipient Recipient address
+     * @param usdaiAmount Amount of USDai
+     * @param withdrawAmount Amount of withdraw token received
+     */
+    event ComposerWithdraw(
+        uint256 indexed dstEid,
+        address indexed withdrawToken,
+        address indexed recipient,
+        uint256 usdaiAmount,
+        uint256 withdrawAmount
     );
 
     /**

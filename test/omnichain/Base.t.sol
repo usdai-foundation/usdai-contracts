@@ -325,7 +325,8 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
             address(usdai),
             address(stakedUsdai),
             address(usdaiHomeOAdapter),
-            address(stakedUsdaiHomeOAdapter)
+            address(stakedUsdaiHomeOAdapter),
+            address(usdtHomeOAdapter)
         );
         TransparentUpgradeableProxy oUsdaiUtilityProxy = new TransparentUpgradeableProxy(
             address(oUsdaiUtilityImpl),

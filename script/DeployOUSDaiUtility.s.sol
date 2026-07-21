@@ -14,7 +14,8 @@ contract DeployOUSDaiUtility is Deployer {
         address deployer,
         address lzEndpoint,
         address[] memory oAdapters,
-        address multisig
+        address multisig,
+        address baseTokenOAdapter
     ) public broadcast useDeployment returns (address) {
         // Deploy OUSDaiUtility implementation
         OUSDaiUtility oUSDaiUtilityImpl = new OUSDaiUtility(
@@ -22,7 +23,8 @@ contract DeployOUSDaiUtility is Deployer {
             _deployment.USDai,
             _deployment.stakedUSDai,
             _deployment.oAdapterUSDai,
-            _deployment.oAdapterStakedUSDai
+            _deployment.oAdapterStakedUSDai,
+            baseTokenOAdapter
         );
         console.log("OUSDaiUtility implementation", address(oUSDaiUtilityImpl));
 

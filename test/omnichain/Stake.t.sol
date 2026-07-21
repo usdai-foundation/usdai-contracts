@@ -360,7 +360,8 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
             address(usdai),
             address(stakedUsdai),
             address(usdaiHomeOAdapter),
-            address(stakedUsdaiHomeOAdapter)
+            address(stakedUsdaiHomeOAdapter),
+            address(usdtHomeOAdapter)
         );
         address proxyAdmin = address(uint160(uint256(vm.load(address(oUsdaiUtility), ERC1967Utils.ADMIN_SLOT))));
         ProxyAdmin(proxyAdmin).upgradeAndCall(

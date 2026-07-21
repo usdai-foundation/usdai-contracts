@@ -62,6 +62,16 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
      */
     IOFT internal immutable _stakedUsdaiOAdapter;
 
+    /**
+     * @notice USDai base token
+     */
+    IERC20 internal immutable _baseToken;
+
+    /**
+     * @notice USDai base token adapter
+     */
+    IOFT internal immutable _baseTokenOAdapter;
+
     /*------------------------------------------------------------------------*/
     /* State */
     /*------------------------------------------------------------------------*/
@@ -82,19 +92,23 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
      * @param stakedUsdai_ StakedUSDai contract
      * @param usdaiOAdapter_ USDai omnichain adapter
      * @param stakedUsdaiOAdapter_ StakedUSDai omnichain adapter
+     * @param baseTokenOAdapter_ Base token omnichain adapter
      */
     constructor(
         address endpoint_,
         address usdai_,
         address stakedUsdai_,
         address usdaiOAdapter_,
-        address stakedUsdaiOAdapter_
+        address stakedUsdaiOAdapter_,
+        address baseTokenOAdapter_
     ) {
         _disableInitializers();
 
         _endpoint = endpoint_;
         _usdai = IUSDai(usdai_);
         _stakedUsdai = IStakedUSDai(stakedUsdai_);
+        _baseToken = IERC20(_usdai.baseToken());
+        _baseTokenOAdapter = IOFT(baseTokenOAdapter_);
         _usdaiOAdapter = IOFT(usdaiOAdapter_);
         _stakedUsdaiOAdapter = IOFT(stakedUsdaiOAdapter_);
     }
@@ -200,6 +214,76 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
             }
         } catch (bytes memory reason) {
             _refund(IERC20(depositToken), to, depositAmount, "Deposit", reason);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @notice Withdraw USDai
+     * @param receivedToken Received token (must be USDai)
+     * @param receivedAmount Received amount
+     * @param data Additional compose data
+     * @return success True if the withdraw was successful, false otherwise
+     */
+    function _withdraw(address receivedToken, uint256 receivedAmount, bytes memory data) internal returns (bool) {
+        /* Decode the message */
+        (uint256 withdrawAmountMinimum, bytes memory path, SendParam memory sendParam, uint256 nativeFee) =
+            abi.decode(data, (uint256, bytes, SendParam, uint256));
+
+        /* Get the destination address */
+        address to = address(uint160(uint256(sendParam.to)));
+
+        /* Validate the received token is USDai and recipient is not blacklisted */
+        if (receivedToken != address(_usdai)) {
+            _refund(IERC20(receivedToken), to, receivedAmount, "Withdraw", "Invalid received token");
+
+            return false;
+        } else if (_usdai.isBlacklisted(to)) {
+            _refund(IERC20(receivedToken), to, receivedAmount, "Withdraw", "Blacklisted recipient");
+
+            return false;
+        }
+
+        try _usdai.withdraw(address(_baseToken), receivedAmount, withdrawAmountMinimum, address(this), path) returns (
+            uint256 withdrawAmount
+        ) {
+            /* Transfer the base token to local destination */
+            if (sendParam.dstEid == 0) {
+                /* Transfer the base token to recipient */
+                _baseToken.transfer(to, withdrawAmount);
+
+                /* Emit the withdraw event */
+                emit ComposerWithdraw(sendParam.dstEid, address(_baseToken), to, receivedAmount, withdrawAmount);
+            } else {
+                /* Update the sendParam with the withdraw amount */
+                sendParam.amountLD = withdrawAmount;
+
+                /* Approve if OAdapter is a lockbox adapter */
+                if (_baseTokenOAdapter.approvalRequired()) {
+                    _baseToken.forceApprove(address(_baseTokenOAdapter), withdrawAmount);
+                }
+
+                /* Send the base token to destination chain */
+                try _baseTokenOAdapter.send{value: nativeFee}(
+                    sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(to)
+                ) {
+                    /* Emit the withdraw event */
+                    emit ComposerWithdraw(sendParam.dstEid, address(_baseToken), to, receivedAmount, withdrawAmount);
+                } catch (bytes memory reason) {
+                    /* Transfer the base token to recipient */
+                    _baseToken.transfer(to, withdrawAmount);
+
+                    /* Emit the failed action event */
+                    emit ActionFailed("Send", reason);
+
+                    return false;
+                }
+            }
+        } catch (bytes memory reason) {
+            _refund(IERC20(receivedToken), to, receivedAmount, "Withdraw", reason);
 
             return false;
         }
@@ -414,6 +498,8 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
             _depositAndStake(depositToken, amountLD, data);
         } else if (actionType == ActionType.Stake) {
             _stake(depositToken, amountLD, data);
+        } else if (actionType == ActionType.Withdraw) {
+            _withdraw(depositToken, amountLD, data);
         } else {
             revert UnknownAction();
         }
@@ -437,6 +523,8 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
             if (!_depositAndStake(depositToken, depositAmount, data)) revert DepositAndStakeFailed();
         } else if (actionType == ActionType.Stake) {
             if (!_stake(depositToken, depositAmount, data)) revert StakeFailed();
+        } else if (actionType == ActionType.Withdraw) {
+            if (!_withdraw(depositToken, depositAmount, data)) revert WithdrawFailed();
         } else {
             revert UnknownAction();
         }
