@@ -573,15 +573,15 @@ library LoanRouterPositionManagerLogic {
         /* Validate not already deposited */
         if (depositTimelockStorage.amounts[loanTermsHash] != 0) revert DuplicateDeposit();
 
-        /* Approve USDai */
-        IERC20(usdai).approve(timelock, usdaiAmount);
-
         /* Update deposit balance */
         depositsStorage.balance -= usdaiAmount;
 
         /* Update deposit timelock balance and amounts */
         depositTimelockStorage.balance += usdaiAmount;
         depositTimelockStorage.amounts[loanTermsHash] = usdaiAmount;
+
+        /* Approve USDai */
+        IERC20(usdai).approve(timelock, usdaiAmount);
     }
 
     /**
