@@ -277,17 +277,18 @@ library LoanRouterPositionManagerLogic {
         /* Compute admin fee amount */
         uint256 adminFee = interest * adminFeeRate / BASIS_POINTS_SCALE;
 
-        /* Adjust for rounding losses and rounding gains */
-        principal = loanBalance == 0 ? loan.pendingBalance : Math.min(loan.pendingBalance, principal);
+        /* Compute pending balance reduction, adjusted for rounding losses and rounding gains */
+        uint256 pendingBalanceReduction =
+            loanBalance == 0 ? loan.pendingBalance : Math.min(loan.pendingBalance, principal);
 
         /* Update deposit balance */
         depositsStorage.balance += principal + interest - adminFee;
 
         /* Update total pending loan balances */
-        loansStorage.pendingBalances[loanTerms.currencyToken] -= principal;
+        loansStorage.pendingBalances[loanTerms.currencyToken] -= pendingBalanceReduction;
 
         /* Compute new loan balance */
-        uint256 newLoanBalance = loan.pendingBalance - principal;
+        uint256 newLoanBalance = loan.pendingBalance - pendingBalanceReduction;
 
         /* Compute scaled new accrual rate */
         uint256 newAccrualRate = loanTerms.trancheSpecs[trancheIndex].rate * newLoanBalance;
