@@ -1,3 +1,6 @@
+* OUSDaiUtility v1.8 - 07/22/2026
+    * Add support for withdraw action.
+
 * USDai v1.6 - 07/20/2026
     * Remove swap adapters.
     * Exclude admin fee recipient from blacklist.
