@@ -90,20 +90,15 @@ abstract contract BasePositionManager is
         /* Calculate admin fee */
         uint256 adminFee = (usdaiAmount * _baseYieldAdminFeeRate) / BASIS_POINTS_SCALE;
 
+        /* Update deposits balance with base yield minus admin fee */
+        _getDepositsStorage().balance += usdaiAmount - adminFee;
+
         /* Transfer admin fee to admin fee recipient */
-        if (adminFee > 0) {
-            _usdai.transfer(_adminFeeRecipient, adminFee);
-
-            /* Calculate amount less admin fee */
-            usdaiAmount -= adminFee;
-        }
-
-        /* Update deposits balance */
-        _getDepositsStorage().balance += usdaiAmount;
+        if (adminFee > 0) _usdai.transfer(_adminFeeRecipient, adminFee);
 
         /* Emit BaseYieldDeposited */
-        emit BaseYieldDeposited(usdaiAmount, adminFee);
+        emit BaseYieldDeposited(usdaiAmount - adminFee, adminFee);
 
-        return (usdaiAmount, adminFee);
+        return (usdaiAmount - adminFee, adminFee);
     }
 }

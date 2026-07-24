@@ -33,7 +33,7 @@ interface IBasePositionManager {
 
     /**
      * @notice Harvest base yield
-     * @return Harvested USDai amount
+     * @return Deposited USDai amount
      * @return Admin fee
      */
     function harvestBaseYield() external returns (uint256, uint256);
