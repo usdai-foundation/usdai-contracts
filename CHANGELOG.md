@@ -1,3 +1,6 @@
+* StakedUSDai v1.12 - 07/28/2026
+    * Add cash-out refinance support.
+
 * OUSDaiUtility v1.8 - 07/22/2026
     * Add support for withdraw action.
 
