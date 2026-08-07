@@ -325,6 +325,7 @@ library LoanRouterPositionManagerLogic {
      * @param newLoanTermsHash New loan terms hash
      * @param trancheIndex Tranche index
      * @param cashOut Cash out amount
+     * @param cashIn Cash in amount
      * @param loanRouter Loan router
      */
     function loanRefinanced(
@@ -336,6 +337,7 @@ library LoanRouterPositionManagerLogic {
         bytes32 newLoanTermsHash,
         uint8 trancheIndex,
         uint256 cashOut,
+        uint256 cashIn,
         address loanRouter
     ) external {
         /* Validate hook context */
@@ -367,18 +369,8 @@ library LoanRouterPositionManagerLogic {
         LoanRouterPositionManager.Accrual storage currencyAccrual =
             loansStorage.interestAccruals[oldLoanTerms.currencyToken];
 
-        /* Check if old loan is a legacy escrow loan */
-        (, uint256 repaymentCount,,) = ILoanRouterV2(loanRouter).loanState(oldLoanTermsHash);
-        bool isLegacyEscrowLoan = repaymentCount == 0;
-
-        /* Bring currency accrual up to the current block */
-        if (isLegacyEscrowLoan) {
-            /* Remove old loan's past interest */
-            _accrue(currencyAccrual, oldLoan.accrualRate, uint64(block.timestamp), oldLoan.lastRepaymentTimestamp);
-        } else {
-            /* Bring currency accrual up to the current block */
-            _accrue(currencyAccrual, 0, 0, 0);
-        }
+        /* Update accrued interest and remove old loan's past interest */
+        _accrue(currencyAccrual, oldLoan.accrualRate, uint64(block.timestamp), oldLoan.lastRepaymentTimestamp);
 
         /* Remove old accrual rate from currency pool */
         currencyAccrual.rate -= oldLoan.accrualRate;
@@ -387,10 +379,11 @@ library LoanRouterPositionManagerLogic {
         delete loansStorage.loan[oldLoanTermsHash];
 
         /* Update total pending loan balance by the notional delta */
-        loansStorage.pendingBalances[oldLoanTerms.currencyToken] += cashOut;
+        loansStorage.pendingBalances[oldLoanTerms.currencyToken] =
+            loansStorage.pendingBalances[oldLoanTerms.currencyToken] + cashOut - cashIn;
 
         /* Compute new pending balance */
-        uint256 newPendingBalance = oldLoan.pendingBalance + cashOut;
+        uint256 newPendingBalance = oldLoan.pendingBalance + cashOut - cashIn;
 
         /* Compute new accrual rate on the outstanding balance */
         uint256 newAccrualRate = newLoanTerms.trancheSpecs[trancheIndex].rate * newPendingBalance;
@@ -402,7 +395,7 @@ library LoanRouterPositionManagerLogic {
         loansStorage.loan[newLoanTermsHash] = LoanRouterPositionManager.Loan({
             accrualRate: newAccrualRate,
             pendingBalance: newPendingBalance,
-            lastRepaymentTimestamp: isLegacyEscrowLoan ? uint64(block.timestamp) : oldLoan.lastRepaymentTimestamp,
+            lastRepaymentTimestamp: uint64(block.timestamp),
             liquidationTimestamp: 0
         });
     }

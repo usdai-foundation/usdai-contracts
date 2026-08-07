@@ -405,7 +405,7 @@ abstract contract LoanRouterPositionManager is
         bytes32 newLoanTermsHash,
         uint8 trancheIndex,
         uint256 cashOut,
-        uint256
+        uint256 cashIn
     ) external nonReentrant {
         LoanRouterPositionManagerLogic.loanRefinanced(
             _getDepositTimelockStorage(),
@@ -416,6 +416,7 @@ abstract contract LoanRouterPositionManager is
             newLoanTermsHash,
             trancheIndex,
             cashOut,
+            cashIn,
             _loanRouterV2
         );
     }
