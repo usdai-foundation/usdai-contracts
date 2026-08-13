@@ -74,7 +74,7 @@ interface IOUSDaiUtility {
     event ComposerDeposit(
         uint256 indexed dstEid,
         address indexed depositToken,
-        address indexed recipient,
+        bytes32 indexed recipient,
         uint256 depositAmount,
         uint256 usdaiAmount
     );
@@ -90,7 +90,7 @@ interface IOUSDaiUtility {
     event ComposerWithdraw(
         uint256 indexed dstEid,
         address indexed withdrawToken,
-        address indexed recipient,
+        bytes32 indexed recipient,
         uint256 usdaiAmount,
         uint256 withdrawAmount
     );
@@ -107,7 +107,7 @@ interface IOUSDaiUtility {
     event ComposerDepositAndStake(
         uint256 indexed dstEid,
         address indexed depositToken,
-        address indexed recipient,
+        bytes32 indexed recipient,
         uint256 depositAmount,
         uint256 usdaiAmount,
         uint256 susdaiAmount
@@ -116,11 +116,11 @@ interface IOUSDaiUtility {
     /**
      * @notice Composer stake event
      * @param dstEid Destination chain EID
-     * @param recipient Recipient
+     * @param recipient Recipient address
      * @param usdaiAmount Amount of USDai staked
      * @param susdaiAmount Amount of Staked USDai received
      */
-    event ComposerStake(uint256 indexed dstEid, address indexed recipient, uint256 usdaiAmount, uint256 susdaiAmount);
+    event ComposerStake(uint256 indexed dstEid, bytes32 indexed recipient, uint256 usdaiAmount, uint256 susdaiAmount);
 
     /**
      * @notice Action failed event

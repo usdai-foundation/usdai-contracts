@@ -637,4 +637,37 @@ contract OUSDaiUtilityDepositTest is OmnichainBaseTest {
         assertEq(usdtHomeToken.balanceOf(address(oUsdaiUtility)), 0);
         assertEq(address(oUsdaiUtility).balance, 0);
     }
+
+    function test__OUSDaiUtilityDepositUsd_LocalDestination_EmitsFullWidthRecipientTopic() public {
+        // Amount of base token the utility deposits
+        uint256 amount = initialBalance;
+
+        // Credit the utility with the base token as the source adapter would
+        vm.prank(address(usdtHomeOAdapter));
+        usdtHomeToken.mint(address(oUsdaiUtility), amount);
+
+        // Recipient with bytes set above the address, which no EVM address can hold
+        bytes32 recipient = bytes32(uint256(1) << 200) | addressToBytes32(user);
+
+        // Send param for a local destination
+        SendParam memory sendParam = SendParam(0, recipient, 0, 0, "", "", "");
+
+        // Deposit payload
+        bytes memory composeMsg = abi.encode(IOUSDaiUtility.ActionType.Deposit, abi.encode(sendParam, user, uint256(0)));
+
+        // Encode the composer message with the base token adapter as source
+        bytes memory message =
+            OFTComposeMsgCodec.encode(1, usdtHomeEid, amount, abi.encodePacked(addressToBytes32(user), composeMsg));
+
+        // Expect the recipient topic to carry all 32 bytes rather than the truncated address
+        vm.expectEmit(true, true, true, false, address(oUsdaiUtility));
+        emit IOUSDaiUtility.ComposerDeposit(0, address(usdtHomeToken), recipient, 0, 0);
+
+        // Execute the compose from the utility endpoint
+        vm.prank(address(endpoints[usdtHomeEid]));
+        oUsdaiUtility.lzCompose(address(usdtHomeOAdapter), bytes32(0), message, address(0), "");
+
+        // Assert the USDai went to the truncated address the recipient topic contains
+        assertEq(usdai.balanceOf(user), amount);
+    }
 }

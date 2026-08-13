@@ -452,4 +452,41 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
         // Assert the destination address received nothing
         assertEq(usdtHomeToken.balanceOf(user), userBefore);
     }
+
+    function test__OUSDaiUtilityWithdrawUsd_LocalDestination_EmitsFullWidthRecipientTopic() public {
+        // Amount of USDai the utility holds for the withdrawal
+        uint256 amount = 1_000e18;
+
+        // Fund the utility with USDai to withdraw
+        vm.prank(user);
+        usdai.transfer(address(oUsdaiUtility), amount);
+
+        // Recipient with bytes set above the address, which no EVM address can hold
+        bytes32 recipient = bytes32(uint256(1) << 200) | addressToBytes32(user);
+
+        // Send param for a local destination
+        SendParam memory sendParam = SendParam(0, recipient, 0, 0, "", "", "");
+
+        // Withdraw payload
+        bytes memory composeMsg =
+            abi.encode(IOUSDaiUtility.ActionType.Withdraw, abi.encode(sendParam, user, uint256(0)));
+
+        // Encode the composer message with the received USDai amount
+        bytes memory message =
+            OFTComposeMsgCodec.encode(1, usdaiHomeEid, amount, abi.encodePacked(addressToBytes32(user), composeMsg));
+
+        // Record the recipient base token balance
+        uint256 recipientBefore = usdtHomeToken.balanceOf(user);
+
+        // Expect the recipient topic to carry all 32 bytes rather than the truncated address
+        vm.expectEmit(true, true, true, false, address(oUsdaiUtility));
+        emit IOUSDaiUtility.ComposerWithdraw(0, address(usdtHomeToken), recipient, 0, 0);
+
+        // Execute the compose from the utility endpoint with the USDai adapter as source
+        vm.prank(address(endpoints[usdtHomeEid]));
+        oUsdaiUtility.lzCompose(address(usdaiHomeOAdapter), bytes32(0), message, address(0), "");
+
+        // Assert the base token went to the truncated address the recipient topic contains
+        assertEq(usdtHomeToken.balanceOf(user) - recipientBefore, amount);
+    }
 }

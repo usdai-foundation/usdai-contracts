@@ -528,4 +528,43 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
         // Assert the destination address received nothing
         assertEq(IERC20(address(stakedUsdai)).balanceOf(user), 0);
     }
+
+    function test__OUSDaiUtilityStake_LocalDestination_EmitsFullWidthRecipientTopic() public {
+        vm.startPrank(user);
+
+        // Deposit USD to get USDai on the home chain
+        usdtHomeToken.approve(address(usdai), initialBalance);
+        uint256 usdaiAmount = usdai.deposit(address(usdtHomeToken), initialBalance, initialBalance - 1e6, user);
+
+        // Fund the utility with the USDai to stake
+        usdai.transfer(address(oUsdaiUtility), usdaiAmount);
+
+        vm.stopPrank();
+
+        // Recipient with bytes set above the address, which no EVM address can hold
+        bytes32 recipient = bytes32(uint256(1) << 200) | addressToBytes32(user);
+
+        // Send param for a local destination
+        SendParam memory sendParam = SendParam(0, recipient, 0, 0, "", "", "");
+
+        // Stake payload
+        bytes memory composeMsg =
+            abi.encode(IOUSDaiUtility.ActionType.Stake, abi.encode(uint256(0), sendParam, user, uint256(0)));
+
+        // Encode the composer message with the USDai adapter as source
+        bytes memory message = OFTComposeMsgCodec.encode(
+            1, usdaiHomeEid, usdaiAmount, abi.encodePacked(addressToBytes32(user), composeMsg)
+        );
+
+        // Expect the recipient topic to carry all 32 bytes rather than the truncated address
+        vm.expectEmit(true, true, false, false, address(oUsdaiUtility));
+        emit IOUSDaiUtility.ComposerStake(0, recipient, 0, 0);
+
+        // Execute the compose from the utility endpoint with the USDai adapter as source
+        vm.prank(address(endpoints[usdtHomeEid]));
+        oUsdaiUtility.lzCompose(address(usdaiHomeOAdapter), bytes32(0), message, address(0), "");
+
+        // Assert the shares went to the truncated address the recipient topic contains
+        assertGt(IERC20(address(stakedUsdai)).balanceOf(user), 0);
+    }
 }

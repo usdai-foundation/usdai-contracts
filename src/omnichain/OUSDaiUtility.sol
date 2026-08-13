@@ -215,9 +215,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
                 _usdai.transfer(to, usdaiAmount);
 
                 /* Emit the deposit event */
-                emit ComposerDeposit(
-                    sendParam.dstEid, depositToken, address(uint160(uint256(sendParam.to))), depositAmount, usdaiAmount
-                );
+                emit ComposerDeposit(sendParam.dstEid, depositToken, sendParam.to, depositAmount, usdaiAmount);
             } else {
                 /* Update the sendParam with the USDai amount */
                 sendParam.amountLD = usdaiAmount;
@@ -227,13 +225,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
                     sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(refundTo)
                 ) {
                     /* Emit the deposit event */
-                    emit ComposerDeposit(
-                        sendParam.dstEid,
-                        depositToken,
-                        address(uint160(uint256(sendParam.to))),
-                        depositAmount,
-                        usdaiAmount
-                    );
+                    emit ComposerDeposit(sendParam.dstEid, depositToken, sendParam.to, depositAmount, usdaiAmount);
                 } catch (bytes memory reason) {
                     /* Transfer the USDai to the refund recipient */
                     _refund(_usdai, refundTo, usdaiAmount, "Send", reason);
@@ -287,11 +279,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
 
                 /* Emit the withdraw event */
                 emit ComposerWithdraw(
-                    sendParam.dstEid,
-                    address(_baseToken),
-                    address(uint160(uint256(sendParam.to))),
-                    receivedAmount,
-                    withdrawAmount
+                    sendParam.dstEid, address(_baseToken), sendParam.to, receivedAmount, withdrawAmount
                 );
             } else {
                 /* Update the sendParam with the withdraw amount */
@@ -308,11 +296,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
                 ) {
                     /* Emit the withdraw event */
                     emit ComposerWithdraw(
-                        sendParam.dstEid,
-                        address(_baseToken),
-                        address(uint160(uint256(sendParam.to))),
-                        receivedAmount,
-                        withdrawAmount
+                        sendParam.dstEid, address(_baseToken), sendParam.to, receivedAmount, withdrawAmount
                     );
                 } catch (bytes memory reason) {
                     /* Transfer the base token to the refund recipient */
@@ -375,12 +359,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
 
                     /* Emit the deposit and stake event */
                     emit ComposerDepositAndStake(
-                        sendParam.dstEid,
-                        depositToken,
-                        address(uint160(uint256(sendParam.to))),
-                        depositAmount,
-                        usdaiAmount,
-                        susdaiAmount
+                        sendParam.dstEid, depositToken, sendParam.to, depositAmount, usdaiAmount, susdaiAmount
                     );
                 } else {
                     /* Update the sendParam with the staked USDai amount */
@@ -392,12 +371,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
                     ) {
                         /* Emit the deposit and stake event */
                         emit ComposerDepositAndStake(
-                            sendParam.dstEid,
-                            depositToken,
-                            address(uint160(uint256(sendParam.to))),
-                            depositAmount,
-                            usdaiAmount,
-                            susdaiAmount
+                            sendParam.dstEid, depositToken, sendParam.to, depositAmount, usdaiAmount, susdaiAmount
                         );
                     } catch (bytes memory reason) {
                         /* Transfer the staked USDai to the refund recipient */
@@ -459,9 +433,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
                 IERC20(address(_stakedUsdai)).transfer(to, susdaiAmount);
 
                 /* Emit the stake event */
-                emit ComposerStake(
-                    sendParam.dstEid, address(uint160(uint256(sendParam.to))), depositAmount, susdaiAmount
-                );
+                emit ComposerStake(sendParam.dstEid, sendParam.to, depositAmount, susdaiAmount);
             } else {
                 /* Update the sendParam with the staked USDai amount */
                 sendParam.amountLD = susdaiAmount;
@@ -471,9 +443,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
                     sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(refundTo)
                 ) {
                     /* Emit the stake event */
-                    emit ComposerStake(
-                        sendParam.dstEid, address(uint160(uint256(sendParam.to))), depositAmount, susdaiAmount
-                    );
+                    emit ComposerStake(sendParam.dstEid, sendParam.to, depositAmount, susdaiAmount);
                 } catch (bytes memory reason) {
                     /* Transfer the staked USDai to the refund recipient */
                     _refund(IERC20(address(_stakedUsdai)), refundTo, susdaiAmount, "Send", reason);
