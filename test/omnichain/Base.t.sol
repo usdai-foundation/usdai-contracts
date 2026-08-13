@@ -252,6 +252,7 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
         oAdaptersUtility[0] = address(usdtHomeOAdapter);
         oAdaptersUtility[1] = address(usdaiHomeOAdapter);
         OUSDaiUtility oUsdaiUtilityImpl = new OUSDaiUtility(
+            address(this),
             address(endpoints[usdtHomeEid]),
             address(usdai),
             address(stakedUsdai),
@@ -260,7 +261,7 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
             address(usdtHomeOAdapter)
         );
         TransparentUpgradeableProxy oUsdaiUtilityProxy = new TransparentUpgradeableProxy(
-            address(oUsdaiUtilityImpl), address(this), abi.encodeWithSignature("initialize(address)", address(this))
+            address(oUsdaiUtilityImpl), address(this), abi.encodeWithSignature("initialize()")
         );
         oUsdaiUtility = OUSDaiUtility(payable(address(oUsdaiUtilityProxy)));
 

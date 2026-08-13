@@ -356,6 +356,7 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
 
         // Redeploy OUSDaiUtility bound to the USDai home endpoint
         OUSDaiUtility newImpl = new OUSDaiUtility(
+            address(this),
             address(endpoints[usdaiHomeEid]),
             address(usdai),
             address(stakedUsdai),

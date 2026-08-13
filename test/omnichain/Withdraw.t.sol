@@ -40,6 +40,7 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
 
     function _upgradeUtilityForUsdaiEndpoint() internal {
         OUSDaiUtility newImpl = new OUSDaiUtility(
+            address(this),
             address(endpoints[usdaiHomeEid]),
             address(usdai),
             address(stakedUsdai),

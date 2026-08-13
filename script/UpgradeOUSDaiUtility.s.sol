@@ -11,9 +11,14 @@ import {OUSDaiUtility} from "src/omnichain/OUSDaiUtility.sol";
 import {Deployer} from "./utils/Deployer.s.sol";
 
 contract UpgradeOUSDaiUtility is Deployer {
-    function run(address lzEndpoint, address baseTokenOAdapter) public broadcast useDeployment returns (address) {
+    function run(
+        address admin,
+        address lzEndpoint,
+        address baseTokenOAdapter
+    ) public broadcast useDeployment returns (address) {
         // Deploy OUSDaiUtility implementation
         OUSDaiUtility oUSDaiUtilityImpl = new OUSDaiUtility(
+            admin,
             lzEndpoint,
             _deployment.USDai,
             _deployment.stakedUSDai,

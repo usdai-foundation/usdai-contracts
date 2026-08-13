@@ -12,12 +12,13 @@ import {Deployer} from "./utils/Deployer.s.sol";
 contract DeployOUSDaiUtility is Deployer {
     function run(
         address deployer,
+        address admin,
         address lzEndpoint,
-        address multisig,
         address baseTokenOAdapter
     ) public broadcast useDeployment returns (address) {
         // Deploy OUSDaiUtility implementation
         OUSDaiUtility oUSDaiUtilityImpl = new OUSDaiUtility(
+            admin,
             lzEndpoint,
             _deployment.USDai,
             _deployment.stakedUSDai,
@@ -29,7 +30,7 @@ contract DeployOUSDaiUtility is Deployer {
 
         // Deploy OUSDaiUtility proxy
         TransparentUpgradeableProxy oUSDaiUtility = new TransparentUpgradeableProxy(
-            address(oUSDaiUtilityImpl), deployer, abi.encodeWithSelector(OUSDaiUtility.initialize.selector, multisig)
+            address(oUSDaiUtilityImpl), deployer, abi.encodeWithSelector(OUSDaiUtility.initialize.selector)
         );
         console.log("OUSDaiUtility proxy", address(oUSDaiUtility));
 

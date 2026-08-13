@@ -4,7 +4,6 @@ pragma solidity 0.8.29;
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
 import "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroComposer.sol";
 import "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/libs/OFTComposeMsgCodec.sol";
@@ -18,7 +17,7 @@ import "../interfaces/IStakedUSDai.sol";
  * @title Omnichain USDai Utility
  * @author USD.AI Foundation
  */
-contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, AccessControlUpgradeable, IOUSDaiUtility {
+contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDaiUtility {
     using SafeERC20 for IERC20;
 
     /*------------------------------------------------------------------------*/
@@ -33,6 +32,11 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
     /*------------------------------------------------------------------------*/
     /* Immutable state */
     /*------------------------------------------------------------------------*/
+
+    /**
+     * @notice Admin address
+     */
+    address internal immutable _admin;
 
     /**
      * @notice LayerZero endpoint for this contract to interact with
@@ -75,6 +79,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
 
     /**
      * @notice OUSDaiUtility Constructor
+     * @param admin_ Admin address
      * @param endpoint_ LayerZero endpoint
      * @param usdai_ USDai contract
      * @param stakedUsdai_ StakedUSDai contract
@@ -83,6 +88,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
      * @param baseTokenOAdapter_ Base token omnichain adapter
      */
     constructor(
+        address admin_,
         address endpoint_,
         address usdai_,
         address stakedUsdai_,
@@ -92,6 +98,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
     ) {
         _disableInitializers();
 
+        _admin = admin_;
         _endpoint = endpoint_;
         _usdai = IUSDai(usdai_);
         _stakedUsdai = IStakedUSDai(stakedUsdai_);
@@ -107,15 +114,21 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
 
     /**
      * @notice Initializer
-     * @param admin Default admin address
      */
-    function initialize(
-        address admin
-    ) external initializer {
+    function initialize() external initializer {
         __ReentrancyGuard_init();
-        __AccessControl_init();
+    }
 
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+    /*------------------------------------------------------------------------*/
+    /* Modifiers */
+    /*------------------------------------------------------------------------*/
+
+    /**
+     * @notice Validate the admin
+     */
+    modifier onlyAdmin() {
+        if (msg.sender != _admin) revert InvalidAddress();
+        _;
     }
 
     /*------------------------------------------------------------------------*/
@@ -520,7 +533,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
     /**
      * @inheritdoc IOUSDaiUtility
      */
-    function rescue(address token, address to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function rescue(address token, address to, uint256 amount) external onlyAdmin {
         IERC20(token).transfer(to, amount);
     }
 }
