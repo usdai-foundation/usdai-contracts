@@ -64,7 +64,7 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
         MessagingFee memory fee = stakedUsdaiHomeOAdapter.quoteSend(stakedUsdaiSendParam, false);
 
         // Data for local staking
-        bytes memory data = abi.encode(usdaiAmount - 1e6, stakedUsdaiSendParam, fee.nativeFee);
+        bytes memory data = abi.encode(usdaiAmount - 1e6, stakedUsdaiSendParam, user, fee.nativeFee);
 
         // Approve the USDai utility to spend the USDai
         usdai.approve(address(oUsdaiUtility), usdaiAmount);
@@ -96,7 +96,7 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
         SendParam memory stakedUsdaiSendParam = SendParam(0, addressToBytes32(user), 0, 0, "", "", "");
 
         // Data for local staking with local destination
-        bytes memory data = abi.encode(usdaiAmount - 1e6, stakedUsdaiSendParam, 0);
+        bytes memory data = abi.encode(usdaiAmount - 1e6, stakedUsdaiSendParam, user, uint256(0));
 
         // Approve the USDai utility to spend the USDai
         usdai.approve(address(oUsdaiUtility), usdaiAmount);
@@ -121,7 +121,7 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
         SendParam memory stakedUsdaiSendParam = SendParam(0, addressToBytes32(user), 0, 0, "", "", "");
 
         // Data
-        bytes memory data = abi.encode(usdaiAmount - 1e6, stakedUsdaiSendParam, 0);
+        bytes memory data = abi.encode(usdaiAmount - 1e6, stakedUsdaiSendParam, user, uint256(0));
 
         // Approve the USDAI utility to spend the USDai
         usdai.approve(address(oUsdaiUtility), usdaiAmount);
@@ -146,7 +146,7 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
         SendParam memory stakedUsdaiSendParam = SendParam(0, addressToBytes32(user), 0, 0, "", "", "");
 
         // Data - invalid minShares (too high)
-        bytes memory data = abi.encode(usdaiAmount, stakedUsdaiSendParam, 0);
+        bytes memory data = abi.encode(usdaiAmount, stakedUsdaiSendParam, user, uint256(0));
 
         // Approve the USDAI utility to spend the USDai
         usdai.approve(address(oUsdaiUtility), usdaiAmount);
@@ -177,7 +177,7 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
         MessagingFee memory fee = stakedUsdaiHomeOAdapter.quoteSend(stakedUsdaiSendParam, false);
 
         // Data for staking with invalid token (should be USDai, but using USD instead)
-        bytes memory data = abi.encode(initialBalance - 1e6, stakedUsdaiSendParam, fee.nativeFee);
+        bytes memory data = abi.encode(initialBalance - 1e6, stakedUsdaiSendParam, user, fee.nativeFee);
 
         // Approve the USDai utility to spend USD (wrong token!)
         usdtHomeToken.approve(address(oUsdaiUtility), initialBalance);
@@ -213,7 +213,7 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
         MessagingFee memory fee = stakedUsdaiHomeOAdapter.quoteSend(stakedUsdaiSendParam, false);
 
         // Data for staking with invalid minShares (too high - will cause staking to fail)
-        bytes memory data = abi.encode(usdaiAmount, stakedUsdaiSendParam, fee.nativeFee); // minShares too high
+        bytes memory data = abi.encode(usdaiAmount, stakedUsdaiSendParam, user, fee.nativeFee); // minShares too high
 
         // Approve the USDai utility to spend the USDai
         usdai.approve(address(oUsdaiUtility), usdaiAmount);
@@ -247,7 +247,8 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
         );
 
         // Data for staking with insufficient native fee (will cause send to fail)
-        bytes memory data = abi.encode(usdaiAmount - 1e6, stakedUsdaiSendParam, 0); // nativeFee = 0, insufficient
+        bytes memory data = abi.encode(usdaiAmount - 1e6, stakedUsdaiSendParam, user, uint256(0)); // nativeFee = 0,
+            // insufficient
 
         // Approve the USDai utility to spend the USDai
         usdai.approve(address(oUsdaiUtility), usdaiAmount);
@@ -281,7 +282,7 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
         MessagingFee memory fee = usdaiHomeOAdapter.quoteSend(usdaiSendParam, false);
 
         // Data
-        bytes memory data = abi.encode(initialBalance, "", usdaiSendParam, fee.nativeFee);
+        bytes memory data = abi.encode(usdaiSendParam, user, fee.nativeFee);
 
         // Approve the USDAI utility to spend the USD
         usdtHomeToken.approve(address(oUsdaiUtility), initialBalance);
@@ -313,7 +314,7 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
         MessagingFee memory stakedFee = stakedUsdaiHomeOAdapter.quoteSend(stakedUsdaiSendParam, false);
 
         // Compose message for USDai away to home, then stake and send staked tokens back
-        bytes memory suffix = abi.encode(initialBalance - 1e6, stakedUsdaiSendParam, stakedFee.nativeFee);
+        bytes memory suffix = abi.encode(initialBalance - 1e6, stakedUsdaiSendParam, user, stakedFee.nativeFee);
         bytes memory composeMsg = abi.encode(IOUSDaiUtility.ActionType.Stake, suffix);
 
         // LZ composer option including fee for sending staked tokens back
@@ -417,7 +418,7 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
 
         // Stake payload declaring the quoted fee
         bytes memory composeMsg =
-            abi.encode(IOUSDaiUtility.ActionType.Stake, abi.encode(uint256(0), sendParam, fee.nativeFee));
+            abi.encode(IOUSDaiUtility.ActionType.Stake, abi.encode(uint256(0), sendParam, user, fee.nativeFee));
 
         // Encode the composer message with the USDai adapter as source
         bytes memory message = OFTComposeMsgCodec.encode(
@@ -462,7 +463,7 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
 
         // Stake payload declaring the quoted fee
         bytes memory composeMsg =
-            abi.encode(IOUSDaiUtility.ActionType.Stake, abi.encode(uint256(0), sendParam, fee.nativeFee));
+            abi.encode(IOUSDaiUtility.ActionType.Stake, abi.encode(uint256(0), sendParam, user, fee.nativeFee));
 
         // Encode the composer message with the USDai adapter as source
         bytes memory message = OFTComposeMsgCodec.encode(
@@ -485,5 +486,46 @@ contract OUSDaiUtilityStakeTest is OmnichainBaseTest {
         // Assert the onward send went through
         /// forge-lint: disable-next-line
         assertEq(stakedUsdaiAwayToken.balanceOf(user), (shares / 10 ** 12) * 10 ** 12);
+    }
+
+    function test__OUSDaiUtilityStake_SendFails_RefundsToRefundToNotDestination() public {
+        // Give the user USDai and move it into the utility as an inbound compose would
+        vm.startPrank(user);
+        usdtHomeToken.approve(address(usdai), initialBalance);
+        uint256 usdaiAmount = usdai.deposit(address(usdtHomeToken), initialBalance, initialBalance - 1e6, user);
+        usdai.transfer(address(oUsdaiUtility), usdaiAmount);
+        vm.stopPrank();
+
+        // Shares the vault mints, less the amount it holds back on its first deposit
+        uint256 shares = usdaiAmount - 1e6;
+
+        // LZ receive option for the onward staked USDai send
+        bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(500_000, 0);
+
+        // Cross-chain send param addressed to the user
+        SendParam memory sendParam =
+            SendParam(stakedUsdaiAwayEid, addressToBytes32(user), shares, 0, receiveOptions, "", "");
+
+        // Refund recipient distinct from the destination
+        address refundTo = address(0xF00D);
+
+        // Stake payload declaring no onward fee, so the guard passes and the send itself is unfunded
+        bytes memory composeMsg =
+            abi.encode(IOUSDaiUtility.ActionType.Stake, abi.encode(uint256(0), sendParam, refundTo, uint256(0)));
+
+        // Encode the composer message with the USDai adapter as source
+        bytes memory message = OFTComposeMsgCodec.encode(
+            1, usdaiHomeEid, usdaiAmount, abi.encodePacked(addressToBytes32(user), composeMsg)
+        );
+
+        // Execute the compose with no native value, so the onward send cannot pay its fee
+        vm.prank(address(endpoints[usdtHomeEid]));
+        oUsdaiUtility.lzCompose(address(usdaiHomeOAdapter), bytes32(0), message, address(0), "");
+
+        // Assert the minted shares went to the refund recipient
+        assertEq(IERC20(address(stakedUsdai)).balanceOf(refundTo), shares);
+
+        // Assert the destination address received nothing
+        assertEq(IERC20(address(stakedUsdai)).balanceOf(user), 0);
     }
 }

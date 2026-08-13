@@ -58,8 +58,8 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
         // Send param — local destination
         SendParam memory sendParam = SendParam(0, addressToBytes32(user), 0, 0, "", "", "");
 
-        // Data: withdrawAmountMinimum, path, sendParam, nativeFee
-        bytes memory data = abi.encode(depositAmount - 1e6, "", sendParam, 0);
+        // Data: sendParam, refundTo, nativeFee
+        bytes memory data = abi.encode(sendParam, user, uint256(0));
 
         // Approve OUSDaiUtility to spend USDai
         usdai.approve(address(oUsdaiUtility), depositAmount);
@@ -94,8 +94,8 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
         // Quote the fee for sending base token from home to away
         MessagingFee memory fee = usdtHomeOAdapter.quoteSend(sendParam, false);
 
-        // Data: withdrawAmountMinimum, path, sendParam, nativeFee
-        bytes memory data = abi.encode(depositAmount - 1e6, "", sendParam, fee.nativeFee);
+        // Data: sendParam, refundTo, nativeFee
+        bytes memory data = abi.encode(sendParam, user, fee.nativeFee);
 
         // Approve OUSDaiUtility to spend USDai
         usdai.approve(address(oUsdaiUtility), depositAmount);
@@ -157,7 +157,7 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
         MessagingFee memory baseFee = usdtHomeOAdapter.quoteSend(baseSendParam, false);
 
         // Compose message: Withdraw action with data
-        bytes memory suffix = abi.encode(awayBalance - 1e6, "", baseSendParam, baseFee.nativeFee);
+        bytes memory suffix = abi.encode(baseSendParam, user, baseFee.nativeFee);
         bytes memory composeMsg = abi.encode(IOUSDaiUtility.ActionType.Withdraw, suffix);
 
         // LZ composer options
@@ -250,7 +250,7 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
         // Send USDai back with compose — local destination (dstEid=0)
         SendParam memory baseSendParam = SendParam(0, addressToBytes32(user), 0, 0, "", "", "");
 
-        bytes memory suffix = abi.encode(awayBalance - 1e6, "", baseSendParam, 0);
+        bytes memory suffix = abi.encode(baseSendParam, user, uint256(0));
         bytes memory composeMsg = abi.encode(IOUSDaiUtility.ActionType.Withdraw, suffix);
 
         bytes memory composerOptions = receiveOptions.addExecutorLzComposeOption(0, 1_050_000, 0);
@@ -316,8 +316,8 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
         // Send param
         SendParam memory sendParam = SendParam(0, addressToBytes32(user), 0, 0, "", "", "");
 
-        // Data
-        bytes memory data = abi.encode(initialBalance, "", sendParam, 0);
+        // Data with the user as the refund recipient for the rejected token
+        bytes memory data = abi.encode(sendParam, user, uint256(0));
 
         // Approve wrong token
         usdtHomeToken.approve(address(oUsdaiUtility), initialBalance);
@@ -348,7 +348,7 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
 
         // Withdraw payload declaring the quoted fee
         bytes memory composeMsg =
-            abi.encode(IOUSDaiUtility.ActionType.Withdraw, abi.encode(uint256(0), "", sendParam, fee.nativeFee));
+            abi.encode(IOUSDaiUtility.ActionType.Withdraw, abi.encode(sendParam, user, fee.nativeFee));
 
         // Encode the composer message with the received USDai amount
         bytes memory message =
@@ -388,7 +388,7 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
 
         // Withdraw payload declaring the quoted fee
         bytes memory composeMsg =
-            abi.encode(IOUSDaiUtility.ActionType.Withdraw, abi.encode(uint256(0), "", sendParam, fee.nativeFee));
+            abi.encode(IOUSDaiUtility.ActionType.Withdraw, abi.encode(sendParam, user, fee.nativeFee));
 
         // Encode the composer message with the received USDai amount
         bytes memory message =
@@ -412,5 +412,44 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
 
         // Assert the onward send went through
         assertEq(usdtAwayToken.balanceOf(user) - awayBefore, amount);
+    }
+
+    function test__OUSDaiUtilityWithdrawUsd_SendFails_RefundsToRefundToNotDestination() public {
+        // Amount of USDai the utility holds for the withdrawal
+        uint256 amount = 1_000e18;
+
+        // Fund the utility with USDai to withdraw
+        vm.prank(user);
+        usdai.transfer(address(oUsdaiUtility), amount);
+
+        // LZ receive option for the onward base token send
+        bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(500_000, 0);
+
+        // Cross-chain send param addressed to the user
+        SendParam memory sendParam = SendParam(usdtAwayEid, addressToBytes32(user), amount, 0, receiveOptions, "", "");
+
+        // Refund recipient distinct from the destination
+        address refundTo = address(0xF00D);
+
+        // Withdraw payload declaring no onward fee, so the guard passes and the send itself is unfunded
+        bytes memory composeMsg =
+            abi.encode(IOUSDaiUtility.ActionType.Withdraw, abi.encode(sendParam, refundTo, uint256(0)));
+
+        // Encode the composer message with the received USDai amount
+        bytes memory message =
+            OFTComposeMsgCodec.encode(1, usdaiHomeEid, amount, abi.encodePacked(addressToBytes32(user), composeMsg));
+
+        // Record the destination base token balance
+        uint256 userBefore = usdtHomeToken.balanceOf(user);
+
+        // Execute the compose with no native value, so the onward send cannot pay its fee
+        vm.prank(address(endpoints[usdtHomeEid]));
+        oUsdaiUtility.lzCompose(address(usdaiHomeOAdapter), bytes32(0), message, address(0), "");
+
+        // Assert the withdrawn base token went to the refund recipient
+        assertEq(usdtHomeToken.balanceOf(refundTo), amount);
+
+        // Assert the destination address received nothing
+        assertEq(usdtHomeToken.balanceOf(user), userBefore);
     }
 }

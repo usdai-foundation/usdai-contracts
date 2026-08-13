@@ -148,20 +148,28 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
     }
 
     /**
-     * @notice Refund
+     * @notice Refund token and ETH for valid recipients
      * @param token Token
      * @param to Recipient address
      * @param amount Amount
-     * @param action Action
-     * @param reason Reason
+     * @param action Action that failed
+     * @param reason Reason for action failure
      */
     function _refund(IERC20 token, address to, uint256 amount, string memory action, bytes memory reason) internal {
-        /* Transfer the token to the recipient */
-        token.transfer(to, amount);
+        /* Check recipient is a non-zero address */
+        if (to != address(0)) {
+            /* Transfer token if recipient is not blacklisted (for USDai and sUSDai) */
+            if (
+                (address(token) != address(_usdai) && address(token) != address(_stakedUsdai))
+                    || !_usdai.isBlacklisted(to)
+            ) {
+                token.transfer(to, amount);
+            }
 
-        /* Refund the msg.value */
-        (bool success,) = payable(to).call{value: msg.value}("");
-        success;
+            /* Refund the msg.value */
+            (bool success,) = payable(to).call{value: msg.value}("");
+            success;
+        }
 
         /* Emit the failed action event */
         emit ActionFailed(action, reason);
@@ -169,22 +177,28 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
 
     /**
      * @notice Deposit USDai
-     * @dev sendParam.to must be an accessible account to receive tokens in the case of action failure
-     * @param depositToken Deposit token
+     * @dev refundTo must be able to receive token and ETH in case of action failure
+     * @param depositToken Deposit token (must be USDai base token)
      * @param depositAmount Deposit token amount
      * @param data Additional compose data
      * @return success True if the deposit was successful, false otherwise
      */
     function _deposit(address depositToken, uint256 depositAmount, bytes memory data) internal returns (bool) {
-        (uint256 usdaiAmountMinimum, bytes memory path, SendParam memory sendParam, uint256 nativeFee) =
-            abi.decode(data, (uint256, bytes, SendParam, uint256));
+        /* Decode the message */
+        (SendParam memory sendParam, address refundTo, uint256 nativeFee) =
+            abi.decode(data, (SendParam, address, uint256));
 
         /* Get the destination address */
         address to = address(uint160(uint256(sendParam.to)));
 
-        /* Validate the recipient is not blacklisted and sufficient native fee is provided */
-        if (_usdai.isBlacklisted(to)) {
-            _refund(IERC20(depositToken), to, depositAmount, "Deposit", "Blacklisted recipient");
+        /* Validate the deposit token is USDai's base token, recipient is not blacklisted, and sufficient native fee is
+        provided */
+        if (depositToken != address(_baseToken)) {
+            _refund(IERC20(depositToken), refundTo, depositAmount, "Deposit", "Invalid deposit token");
+
+            return false;
+        } else if (_usdai.isBlacklisted(to)) {
+            _refund(IERC20(depositToken), refundTo, depositAmount, "Deposit", "Blacklisted recipient");
 
             return false;
         } else if (msg.value < nativeFee) {
@@ -194,38 +208,41 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
         /* Approve the USDai contract to spend the deposit token */
         IERC20(depositToken).forceApprove(address(_usdai), depositAmount);
 
-        try _usdai.deposit(depositToken, depositAmount, usdaiAmountMinimum, address(this), path) returns (
-            uint256 usdaiAmount
-        ) {
-            /* Transfer the USDai to local destination */
+        try _usdai.deposit(depositAmount, address(this)) returns (uint256 usdaiAmount) {
+            /* Handle local vs cross-chain destination */
             if (sendParam.dstEid == 0) {
                 /* Transfer the USDai to recipient */
                 _usdai.transfer(to, usdaiAmount);
 
                 /* Emit the deposit event */
-                emit ComposerDeposit(sendParam.dstEid, depositToken, to, depositAmount, usdaiAmount);
+                emit ComposerDeposit(
+                    sendParam.dstEid, depositToken, address(uint160(uint256(sendParam.to))), depositAmount, usdaiAmount
+                );
             } else {
                 /* Update the sendParam with the USDai amount */
                 sendParam.amountLD = usdaiAmount;
 
                 /* Send the USDai to destination chain */
                 try _usdaiOAdapter.send{value: nativeFee}(
-                    sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(to)
+                    sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(refundTo)
                 ) {
                     /* Emit the deposit event */
-                    emit ComposerDeposit(sendParam.dstEid, depositToken, to, depositAmount, usdaiAmount);
+                    emit ComposerDeposit(
+                        sendParam.dstEid,
+                        depositToken,
+                        address(uint160(uint256(sendParam.to))),
+                        depositAmount,
+                        usdaiAmount
+                    );
                 } catch (bytes memory reason) {
-                    /* Transfer the USDai to recipient */
-                    _usdai.transfer(to, usdaiAmount);
-
-                    /* Emit the failed action event */
-                    emit ActionFailed("Send", reason);
+                    /* Transfer the USDai to the refund recipient */
+                    _refund(_usdai, refundTo, usdaiAmount, "Send", reason);
 
                     return false;
                 }
             }
         } catch (bytes memory reason) {
-            _refund(IERC20(depositToken), to, depositAmount, "Deposit", reason);
+            _refund(IERC20(depositToken), refundTo, depositAmount, "Deposit", reason);
 
             return false;
         }
@@ -235,6 +252,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
 
     /**
      * @notice Withdraw USDai
+     * @dev refundTo must be able to receive token and ETH in case of action failure
      * @param receivedToken Received token (must be USDai)
      * @param receivedAmount Received amount
      * @param data Additional compose data
@@ -242,35 +260,39 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
      */
     function _withdraw(address receivedToken, uint256 receivedAmount, bytes memory data) internal returns (bool) {
         /* Decode the message */
-        (uint256 withdrawAmountMinimum, bytes memory path, SendParam memory sendParam, uint256 nativeFee) =
-            abi.decode(data, (uint256, bytes, SendParam, uint256));
+        (SendParam memory sendParam, address refundTo, uint256 nativeFee) =
+            abi.decode(data, (SendParam, address, uint256));
 
         /* Get the destination address */
         address to = address(uint160(uint256(sendParam.to)));
 
         /* Validate the received token is USDai, recipient is not blacklisted, and sufficient native fee is provided */
         if (receivedToken != address(_usdai)) {
-            _refund(IERC20(receivedToken), to, receivedAmount, "Withdraw", "Invalid received token");
+            _refund(IERC20(receivedToken), refundTo, receivedAmount, "Withdraw", "Invalid received token");
 
             return false;
         } else if (_usdai.isBlacklisted(to)) {
-            _refund(IERC20(receivedToken), to, receivedAmount, "Withdraw", "Blacklisted recipient");
+            _refund(IERC20(receivedToken), refundTo, receivedAmount, "Withdraw", "Blacklisted recipient");
 
             return false;
         } else if (msg.value < nativeFee) {
             revert InsufficientNativeFee();
         }
 
-        try _usdai.withdraw(address(_baseToken), receivedAmount, withdrawAmountMinimum, address(this), path) returns (
-            uint256 withdrawAmount
-        ) {
-            /* Transfer the base token to local destination */
+        try _usdai.withdraw(receivedAmount, address(this)) returns (uint256 withdrawAmount) {
+            /* Handle local vs cross-chain destination */
             if (sendParam.dstEid == 0) {
                 /* Transfer the base token to recipient */
                 _baseToken.transfer(to, withdrawAmount);
 
                 /* Emit the withdraw event */
-                emit ComposerWithdraw(sendParam.dstEid, address(_baseToken), to, receivedAmount, withdrawAmount);
+                emit ComposerWithdraw(
+                    sendParam.dstEid,
+                    address(_baseToken),
+                    address(uint160(uint256(sendParam.to))),
+                    receivedAmount,
+                    withdrawAmount
+                );
             } else {
                 /* Update the sendParam with the withdraw amount */
                 sendParam.amountLD = withdrawAmount;
@@ -282,22 +304,25 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
 
                 /* Send the base token to destination chain */
                 try _baseTokenOAdapter.send{value: nativeFee}(
-                    sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(to)
+                    sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(refundTo)
                 ) {
                     /* Emit the withdraw event */
-                    emit ComposerWithdraw(sendParam.dstEid, address(_baseToken), to, receivedAmount, withdrawAmount);
+                    emit ComposerWithdraw(
+                        sendParam.dstEid,
+                        address(_baseToken),
+                        address(uint160(uint256(sendParam.to))),
+                        receivedAmount,
+                        withdrawAmount
+                    );
                 } catch (bytes memory reason) {
-                    /* Transfer the base token to recipient */
-                    _baseToken.transfer(to, withdrawAmount);
-
-                    /* Emit the failed action event */
-                    emit ActionFailed("Send", reason);
+                    /* Transfer the base token to the refund recipient */
+                    _refund(_baseToken, refundTo, withdrawAmount, "Send", reason);
 
                     return false;
                 }
             }
         } catch (bytes memory reason) {
-            _refund(IERC20(receivedToken), to, receivedAmount, "Withdraw", reason);
+            _refund(IERC20(receivedToken), refundTo, receivedAmount, "Withdraw", reason);
 
             return false;
         }
@@ -307,28 +332,28 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
 
     /**
      * @notice Deposit and stake the USDai
-     * @dev sendParam.to must be an accessible account to receive tokens in the case of action failure
-     * @param depositToken Deposit token
+     * @dev refundTo must be able to receive token and ETH in case of action failure
+     * @param depositToken Deposit token (must be USDai base token)
      * @param depositAmount Deposit token amount
      * @param data Additional compose data
      * @return success True if the deposit and stake was successful, false otherwise
      */
     function _depositAndStake(address depositToken, uint256 depositAmount, bytes memory data) internal returns (bool) {
         /* Decode the message */
-        (
-            uint256 usdaiAmountMinimum,
-            bytes memory path,
-            uint256 minShares,
-            SendParam memory sendParam,
-            uint256 nativeFee
-        ) = abi.decode(data, (uint256, bytes, uint256, SendParam, uint256));
+        (uint256 minShares, SendParam memory sendParam, address refundTo, uint256 nativeFee) =
+            abi.decode(data, (uint256, SendParam, address, uint256));
 
         /* Get the destination address */
         address to = address(uint160(uint256(sendParam.to)));
 
-        /* Validate the recipient is not blacklisted and sufficient native fee is provided */
-        if (_usdai.isBlacklisted(to)) {
-            _refund(IERC20(depositToken), to, depositAmount, "DepositAndStake", "Blacklisted recipient");
+        /* Validate the deposit token is USDai's base token, recipient is not blacklisted, and sufficient native fee is
+        provided */
+        if (depositToken != address(_baseToken)) {
+            _refund(IERC20(depositToken), refundTo, depositAmount, "DepositAndStake", "Invalid deposit token");
+
+            return false;
+        } else if (_usdai.isBlacklisted(to)) {
+            _refund(IERC20(depositToken), refundTo, depositAmount, "DepositAndStake", "Blacklisted recipient");
 
             return false;
         } else if (msg.value < nativeFee) {
@@ -338,21 +363,24 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
         /* Approve the USDai contract to spend the deposit token */
         IERC20(depositToken).forceApprove(address(_usdai), depositAmount);
 
-        try _usdai.deposit(depositToken, depositAmount, usdaiAmountMinimum, address(this), path) returns (
-            uint256 usdaiAmount
-        ) {
+        try _usdai.deposit(depositAmount, address(this)) returns (uint256 usdaiAmount) {
             /* Approve the staked USDai contract to spend the USDai */
             _usdai.approve(address(_stakedUsdai), usdaiAmount);
 
             try _stakedUsdai.deposit(usdaiAmount, address(this), minShares) returns (uint256 susdaiAmount) {
-                /* Transfer the staked USDai to local destination */
+                /* Handle local vs cross-chain destination */
                 if (sendParam.dstEid == 0) {
                     /* Transfer the staked USDai to recipient */
                     IERC20(address(_stakedUsdai)).transfer(to, susdaiAmount);
 
                     /* Emit the deposit and stake event */
                     emit ComposerDepositAndStake(
-                        sendParam.dstEid, depositToken, to, depositAmount, usdaiAmount, susdaiAmount
+                        sendParam.dstEid,
+                        depositToken,
+                        address(uint160(uint256(sendParam.to))),
+                        depositAmount,
+                        usdaiAmount,
+                        susdaiAmount
                     );
                 } else {
                     /* Update the sendParam with the staked USDai amount */
@@ -360,29 +388,31 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
 
                     /* Send the staked USDai to destination chain */
                     try _stakedUsdaiOAdapter.send{value: nativeFee}(
-                        sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(to)
+                        sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(refundTo)
                     ) {
                         /* Emit the deposit and stake event */
                         emit ComposerDepositAndStake(
-                            sendParam.dstEid, depositToken, to, depositAmount, usdaiAmount, susdaiAmount
+                            sendParam.dstEid,
+                            depositToken,
+                            address(uint160(uint256(sendParam.to))),
+                            depositAmount,
+                            usdaiAmount,
+                            susdaiAmount
                         );
                     } catch (bytes memory reason) {
-                        /* Transfer the staked USDai to recipient */
-                        IERC20(address(_stakedUsdai)).transfer(to, susdaiAmount);
-
-                        /* Emit the failed action event */
-                        emit ActionFailed("Send", reason);
+                        /* Transfer the staked USDai to the refund recipient */
+                        _refund(IERC20(address(_stakedUsdai)), refundTo, susdaiAmount, "Send", reason);
 
                         return false;
                     }
                 }
             } catch (bytes memory reason) {
-                _refund(_usdai, to, usdaiAmount, "Stake", reason);
+                _refund(_usdai, refundTo, usdaiAmount, "Stake", reason);
 
                 return false;
             }
         } catch (bytes memory reason) {
-            _refund(IERC20(depositToken), to, depositAmount, "Deposit", reason);
+            _refund(IERC20(depositToken), refundTo, depositAmount, "Deposit", reason);
 
             return false;
         }
@@ -392,26 +422,27 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
 
     /**
      * @notice Stake USDai
+     * @dev refundTo must be able to receive token and ETH in case of action failure
      * @param depositToken Deposit token (must be USDai)
-     * @param depositAmount USDai amount
+     * @param depositAmount Deposit token amount
      * @param data Additional compose data
      * @return success True if the stake was successful, false otherwise
      */
     function _stake(address depositToken, uint256 depositAmount, bytes memory data) internal returns (bool) {
         /* Decode the message */
-        (uint256 minShares, SendParam memory sendParam, uint256 nativeFee) =
-            abi.decode(data, (uint256, SendParam, uint256));
+        (uint256 minShares, SendParam memory sendParam, address refundTo, uint256 nativeFee) =
+            abi.decode(data, (uint256, SendParam, address, uint256));
 
         /* Get the destination address */
         address to = address(uint160(uint256(sendParam.to)));
 
         /* Validate the deposit token is USDai, recipient is not blacklisted, and sufficient native fee is provided */
         if (depositToken != address(_usdai)) {
-            _refund(IERC20(depositToken), to, depositAmount, "Stake", "Invalid deposit token");
+            _refund(IERC20(depositToken), refundTo, depositAmount, "Stake", "Invalid deposit token");
 
             return false;
         } else if (_usdai.isBlacklisted(to)) {
-            _refund(IERC20(depositToken), to, depositAmount, "Stake", "Blacklisted recipient");
+            _refund(IERC20(depositToken), refundTo, depositAmount, "Stake", "Blacklisted recipient");
 
             return false;
         } else if (msg.value < nativeFee) {
@@ -422,35 +453,36 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
         _usdai.approve(address(_stakedUsdai), depositAmount);
 
         try _stakedUsdai.deposit(depositAmount, address(this), minShares) returns (uint256 susdaiAmount) {
-            /* Transfer the staked USDai to local destination */
+            /* Handle local vs cross-chain destination */
             if (sendParam.dstEid == 0) {
                 /* Transfer the staked USDai to recipient */
                 IERC20(address(_stakedUsdai)).transfer(to, susdaiAmount);
 
                 /* Emit the stake event */
-                emit ComposerStake(sendParam.dstEid, to, depositAmount, susdaiAmount);
+                emit ComposerStake(
+                    sendParam.dstEid, address(uint160(uint256(sendParam.to))), depositAmount, susdaiAmount
+                );
             } else {
                 /* Update the sendParam with the staked USDai amount */
                 sendParam.amountLD = susdaiAmount;
 
                 /* Send the staked USDai to destination chain */
                 try _stakedUsdaiOAdapter.send{value: nativeFee}(
-                    sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(to)
+                    sendParam, MessagingFee({nativeFee: nativeFee, lzTokenFee: 0}), payable(refundTo)
                 ) {
                     /* Emit the stake event */
-                    emit ComposerStake(sendParam.dstEid, to, depositAmount, susdaiAmount);
+                    emit ComposerStake(
+                        sendParam.dstEid, address(uint160(uint256(sendParam.to))), depositAmount, susdaiAmount
+                    );
                 } catch (bytes memory reason) {
-                    /* Transfer the staked USDai to recipient */
-                    IERC20(address(_stakedUsdai)).transfer(to, susdaiAmount);
-
-                    /* Emit the failed action event */
-                    emit ActionFailed("Send", reason);
+                    /* Transfer the staked USDai to the refund recipient */
+                    _refund(IERC20(address(_stakedUsdai)), refundTo, susdaiAmount, "Send", reason);
 
                     return false;
                 }
             }
         } catch (bytes memory reason) {
-            _refund(IERC20(depositToken), to, depositAmount, "Stake", reason);
+            _refund(IERC20(depositToken), refundTo, depositAmount, "Stake", reason);
 
             return false;
         }
@@ -484,7 +516,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
         uint256 amountLD = OFTComposeMsgCodec.amountLD(message);
         bytes memory composeMessage = OFTComposeMsgCodec.composeMsg(message);
 
-        /* Decode the message */
+        /* Decode the compose message */
         (ActionType actionType, bytes memory data) = abi.decode(composeMessage, (ActionType, bytes));
 
         /* Get the deposit token */

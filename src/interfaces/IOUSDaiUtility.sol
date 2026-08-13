@@ -127,7 +127,7 @@ interface IOUSDaiUtility {
      * @param action Action that failed
      * @param reason Reason for action failure
      */
-    event ActionFailed(string indexed action, bytes reason);
+    event ActionFailed(string action, bytes reason);
 
     /*------------------------------------------------------------------------*/
     /* Public API */
