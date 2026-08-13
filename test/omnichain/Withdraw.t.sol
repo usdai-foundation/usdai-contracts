@@ -19,8 +19,6 @@ import {ITransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transp
 import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import {ERC1967Utils} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Utils.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
     using OptionsBuilder for bytes;
 
@@ -329,5 +327,90 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
         oUsdaiUtility.localCompose(IOUSDaiUtility.ActionType.Withdraw, address(usdtHomeToken), initialBalance, data);
 
         vm.stopPrank();
+    }
+
+    function test__OUSDaiUtilityWithdraw_InsufficientNativeFee_Reverts() public {
+        // Amount of USDai the utility holds for the withdrawal
+        uint256 amount = 1_000e18;
+
+        // Fund the utility with USDai to withdraw
+        vm.prank(user);
+        usdai.transfer(address(oUsdaiUtility), amount);
+
+        // LZ receive option for the onward base token send
+        bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(500_000, 0);
+
+        // Cross-chain send param for the base token leg
+        SendParam memory sendParam = SendParam(usdtAwayEid, addressToBytes32(user), amount, 0, receiveOptions, "", "");
+
+        // Quote the onward fee the payload asks the utility to pay
+        MessagingFee memory fee = usdtHomeOAdapter.quoteSend(sendParam, false);
+
+        // Withdraw payload declaring the quoted fee
+        bytes memory composeMsg =
+            abi.encode(IOUSDaiUtility.ActionType.Withdraw, abi.encode(uint256(0), "", sendParam, fee.nativeFee));
+
+        // Encode the composer message with the received USDai amount
+        bytes memory message =
+            OFTComposeMsgCodec.encode(1, usdaiHomeEid, amount, abi.encodePacked(addressToBytes32(user), composeMsg));
+
+        // Native value one wei short of the declared fee
+        uint256 value = fee.nativeFee - 1;
+
+        // Utility endpoint that is allowed to call lzCompose
+        address endpoint = address(endpoints[usdtHomeEid]);
+
+        // Fund the endpoint to forward the native value
+        vm.deal(endpoint, value);
+
+        // Expect the compose to revert rather than withdraw and refund
+        vm.prank(endpoint);
+        vm.expectRevert(IOUSDaiUtility.InsufficientNativeFee.selector);
+        oUsdaiUtility.lzCompose{value: value}(address(usdaiHomeOAdapter), bytes32(0), message, address(0), "");
+    }
+
+    function test__OUSDaiUtilityWithdraw_ExactNativeFee_DoesNotRevert() public {
+        // Amount of USDai the utility holds for the withdrawal
+        uint256 amount = 1_000e18;
+
+        // Fund the utility with USDai to withdraw
+        vm.prank(user);
+        usdai.transfer(address(oUsdaiUtility), amount);
+
+        // LZ receive option for the onward base token send
+        bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(500_000, 0);
+
+        // Cross-chain send param for the base token leg
+        SendParam memory sendParam = SendParam(usdtAwayEid, addressToBytes32(user), amount, 0, receiveOptions, "", "");
+
+        // Quote the onward fee the payload asks the utility to pay
+        MessagingFee memory fee = usdtHomeOAdapter.quoteSend(sendParam, false);
+
+        // Withdraw payload declaring the quoted fee
+        bytes memory composeMsg =
+            abi.encode(IOUSDaiUtility.ActionType.Withdraw, abi.encode(uint256(0), "", sendParam, fee.nativeFee));
+
+        // Encode the composer message with the received USDai amount
+        bytes memory message =
+            OFTComposeMsgCodec.encode(1, usdaiHomeEid, amount, abi.encodePacked(addressToBytes32(user), composeMsg));
+
+        // Utility endpoint that is allowed to call lzCompose
+        address endpoint = address(endpoints[usdtHomeEid]);
+
+        // Fund the endpoint to forward the exact fee
+        vm.deal(endpoint, fee.nativeFee);
+
+        // Record the away chain balance the user already holds from the harness setup
+        uint256 awayBefore = usdtAwayToken.balanceOf(user);
+
+        // Exactly the declared fee clears the guard, which compares with a strict less than
+        vm.prank(endpoint);
+        oUsdaiUtility.lzCompose{value: fee.nativeFee}(address(usdaiHomeOAdapter), bytes32(0), message, address(0), "");
+
+        // Deliver the packet to the away chain
+        verifyPackets(usdtAwayEid, addressToBytes32(address(usdtAwayOAdapter)));
+
+        // Assert the onward send went through
+        assertEq(usdtAwayToken.balanceOf(user) - awayBefore, amount);
     }
 }

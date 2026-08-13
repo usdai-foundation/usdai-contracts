@@ -182,11 +182,13 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
         /* Get the destination address */
         address to = address(uint160(uint256(sendParam.to)));
 
-        /* Validate the recipient is not blacklisted */
+        /* Validate the recipient is not blacklisted and sufficient native fee is provided */
         if (_usdai.isBlacklisted(to)) {
             _refund(IERC20(depositToken), to, depositAmount, "Deposit", "Blacklisted recipient");
 
             return false;
+        } else if (msg.value < nativeFee) {
+            revert InsufficientNativeFee();
         }
 
         /* Approve the USDai contract to spend the deposit token */
@@ -246,7 +248,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
         /* Get the destination address */
         address to = address(uint160(uint256(sendParam.to)));
 
-        /* Validate the received token is USDai and recipient is not blacklisted */
+        /* Validate the received token is USDai, recipient is not blacklisted, and sufficient native fee is provided */
         if (receivedToken != address(_usdai)) {
             _refund(IERC20(receivedToken), to, receivedAmount, "Withdraw", "Invalid received token");
 
@@ -255,6 +257,8 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
             _refund(IERC20(receivedToken), to, receivedAmount, "Withdraw", "Blacklisted recipient");
 
             return false;
+        } else if (msg.value < nativeFee) {
+            revert InsufficientNativeFee();
         }
 
         try _usdai.withdraw(address(_baseToken), receivedAmount, withdrawAmountMinimum, address(this), path) returns (
@@ -322,11 +326,13 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
         /* Get the destination address */
         address to = address(uint160(uint256(sendParam.to)));
 
-        /* Validate the recipient is not blacklisted */
+        /* Validate the recipient is not blacklisted and sufficient native fee is provided */
         if (_usdai.isBlacklisted(to)) {
             _refund(IERC20(depositToken), to, depositAmount, "DepositAndStake", "Blacklisted recipient");
 
             return false;
+        } else if (msg.value < nativeFee) {
+            revert InsufficientNativeFee();
         }
 
         /* Approve the USDai contract to spend the deposit token */
@@ -399,7 +405,7 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
         /* Get the destination address */
         address to = address(uint160(uint256(sendParam.to)));
 
-        /* Validate the deposit token is USDai and recipient is not blacklisted */
+        /* Validate the deposit token is USDai, recipient is not blacklisted, and sufficient native fee is provided */
         if (depositToken != address(_usdai)) {
             _refund(IERC20(depositToken), to, depositAmount, "Stake", "Invalid deposit token");
 
@@ -408,6 +414,8 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
             _refund(IERC20(depositToken), to, depositAmount, "Stake", "Blacklisted recipient");
 
             return false;
+        } else if (msg.value < nativeFee) {
+            revert InsufficientNativeFee();
         }
 
         /* Approve the staked USDai contract to spend the USDai */

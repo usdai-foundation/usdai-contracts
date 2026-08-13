@@ -54,6 +54,11 @@ interface IOUSDaiUtility {
      */
     error StakeFailed();
 
+    /**
+     * @notice Insufficient native fee
+     */
+    error InsufficientNativeFee();
+
     /*------------------------------------------------------------------------*/
     /* Events */
     /*------------------------------------------------------------------------*/

@@ -304,4 +304,121 @@ contract OUSDaiUtilityDepositTest is OmnichainBaseTest {
 
         vm.stopPrank();
     }
+
+    function test__OUSDaiUtilityDeposit_InsufficientNativeFee_Reverts() public {
+        // Amount of base token the utility deposits
+        uint256 amount = initialBalance;
+
+        // Credit the utility with the base token as the source adapter would
+        vm.prank(address(usdtHomeOAdapter));
+        usdtHomeToken.mint(address(oUsdaiUtility), amount);
+
+        // LZ receive option for the onward USDai send
+        bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(500_000, 0);
+
+        // Cross-chain send param addressed to the user
+        SendParam memory sendParam = SendParam(usdaiAwayEid, addressToBytes32(user), amount, 0, receiveOptions, "", "");
+
+        // Quote the onward fee the payload asks the utility to pay
+        MessagingFee memory fee = usdaiHomeOAdapter.quoteSend(sendParam, false);
+
+        // Deposit payload declaring the quoted fee
+        bytes memory composeMsg =
+            abi.encode(IOUSDaiUtility.ActionType.Deposit, abi.encode(uint256(0), "", sendParam, fee.nativeFee));
+
+        // Encode the composer message with the base token adapter as source
+        bytes memory message =
+            OFTComposeMsgCodec.encode(1, usdtHomeEid, amount, abi.encodePacked(addressToBytes32(user), composeMsg));
+
+        // Native value one wei short of the declared fee
+        uint256 value = fee.nativeFee - 1;
+
+        // Utility endpoint that is allowed to call lzCompose
+        address endpoint = address(endpoints[usdtHomeEid]);
+
+        // Fund the endpoint to forward the native value
+        vm.deal(endpoint, value);
+
+        // Expect the compose to revert rather than deposit and refund
+        vm.prank(endpoint);
+        vm.expectRevert(IOUSDaiUtility.InsufficientNativeFee.selector);
+        oUsdaiUtility.lzCompose{value: value}(address(usdtHomeOAdapter), bytes32(0), message, address(0), "");
+    }
+
+    function test__OUSDaiUtilityDeposit_ExactNativeFee_DoesNotRevert() public {
+        // Amount of base token the utility deposits
+        uint256 amount = initialBalance;
+
+        // Credit the utility with the base token as the source adapter would
+        vm.prank(address(usdtHomeOAdapter));
+        usdtHomeToken.mint(address(oUsdaiUtility), amount);
+
+        // LZ receive option for the onward USDai send
+        bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(500_000, 0);
+
+        // Cross-chain send param addressed to the user
+        SendParam memory sendParam = SendParam(usdaiAwayEid, addressToBytes32(user), amount, 0, receiveOptions, "", "");
+
+        // Quote the onward fee the payload asks the utility to pay
+        MessagingFee memory fee = usdaiHomeOAdapter.quoteSend(sendParam, false);
+
+        // Deposit payload declaring the quoted fee
+        bytes memory composeMsg =
+            abi.encode(IOUSDaiUtility.ActionType.Deposit, abi.encode(uint256(0), "", sendParam, fee.nativeFee));
+
+        // Encode the composer message with the base token adapter as source
+        bytes memory message =
+            OFTComposeMsgCodec.encode(1, usdtHomeEid, amount, abi.encodePacked(addressToBytes32(user), composeMsg));
+
+        // Utility endpoint that is allowed to call lzCompose
+        address endpoint = address(endpoints[usdtHomeEid]);
+
+        // Fund the endpoint to forward the exact fee
+        vm.deal(endpoint, fee.nativeFee);
+
+        // Exactly the declared fee clears the guard, which compares with a strict less than
+        vm.prank(endpoint);
+        oUsdaiUtility.lzCompose{value: fee.nativeFee}(address(usdtHomeOAdapter), bytes32(0), message, address(0), "");
+
+        // Deliver the packet to the away chain
+        verifyPackets(usdaiAwayEid, addressToBytes32(address(usdaiAwayOAdapter)));
+
+        // Assert the onward send went through
+        assertEq(usdaiAwayToken.balanceOf(user), amount);
+    }
+
+    function test__OUSDaiUtilityDeposit_BlacklistedRecipient_InsufficientFee_RefundsRatherThanReverts() public {
+        // Amount of base token the utility holds
+        uint256 amount = initialBalance;
+
+        // Credit the utility with the base token as the source adapter would
+        vm.prank(address(usdtHomeOAdapter));
+        usdtHomeToken.mint(address(oUsdaiUtility), amount);
+
+        // LZ receive option for the onward USDai send
+        bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(500_000, 0);
+
+        // Cross-chain send param addressed to the blacklisted account
+        SendParam memory sendParam =
+            SendParam(usdaiAwayEid, addressToBytes32(blacklistedUser), amount, 0, receiveOptions, "", "");
+
+        // Quote the onward fee the payload asks the utility to pay
+        MessagingFee memory fee = usdaiHomeOAdapter.quoteSend(sendParam, false);
+
+        // Deposit payload declaring a fee the compose will not fund
+        bytes memory composeMsg =
+            abi.encode(IOUSDaiUtility.ActionType.Deposit, abi.encode(uint256(0), "", sendParam, fee.nativeFee));
+
+        // Encode the composer message with the base token adapter as source
+        bytes memory message =
+            OFTComposeMsgCodec.encode(1, usdtHomeEid, amount, abi.encodePacked(addressToBytes32(user), composeMsg));
+
+        // The blacklist branch sits above the fee guard, so screening wins and the compose returns
+        vm.prank(address(endpoints[usdtHomeEid]));
+        oUsdaiUtility.lzCompose(address(usdtHomeOAdapter), bytes32(0), message, address(0), "");
+
+        /* The compose refunds instead of reverting, so the utility keeps none of the base token.
+        Which address receives the refund is pinned once the payload carries a refund recipient. */
+        assertEq(usdtHomeToken.balanceOf(address(oUsdaiUtility)), 0);
+    }
 }

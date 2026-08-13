@@ -364,4 +364,94 @@ contract OUSDaiUtilityDepositAndStakeTest is OmnichainBaseTest {
 
         vm.stopPrank();
     }
+
+    function test__OUSDaiUtilityDepositAndStake_InsufficientNativeFee_Reverts() public {
+        // Amount of base token the utility deposits and stakes
+        uint256 amount = initialBalance;
+
+        // Credit the utility with the base token as the source adapter would
+        vm.prank(address(usdtHomeOAdapter));
+        usdtHomeToken.mint(address(oUsdaiUtility), amount);
+
+        // LZ receive option for the onward staked USDai send
+        bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(500_000, 0);
+
+        // Cross-chain send param for the staked USDai leg
+        SendParam memory sendParam =
+            SendParam(stakedUsdaiAwayEid, addressToBytes32(user), amount, 0, receiveOptions, "", "");
+
+        // Quote the onward fee the payload asks the utility to pay
+        MessagingFee memory fee = stakedUsdaiHomeOAdapter.quoteSend(sendParam, false);
+
+        // Deposit and stake payload declaring the quoted fee
+        bytes memory composeMsg = abi.encode(
+            IOUSDaiUtility.ActionType.DepositAndStake, abi.encode(uint256(0), "", uint256(0), sendParam, fee.nativeFee)
+        );
+
+        // Encode the composer message with the base token adapter as source
+        bytes memory message =
+            OFTComposeMsgCodec.encode(1, usdtHomeEid, amount, abi.encodePacked(addressToBytes32(user), composeMsg));
+
+        // Native value one wei short of the declared fee
+        uint256 value = fee.nativeFee - 1;
+
+        // Utility endpoint that is allowed to call lzCompose
+        address endpoint = address(endpoints[usdtHomeEid]);
+
+        // Fund the endpoint to forward the native value
+        vm.deal(endpoint, value);
+
+        // Expect the compose to revert rather than deposit, stake and refund
+        vm.prank(endpoint);
+        vm.expectRevert(IOUSDaiUtility.InsufficientNativeFee.selector);
+        oUsdaiUtility.lzCompose{value: value}(address(usdtHomeOAdapter), bytes32(0), message, address(0), "");
+    }
+
+    function test__OUSDaiUtilityDepositAndStake_ExactNativeFee_DoesNotRevert() public {
+        // Amount of base token the utility deposits and stakes
+        uint256 amount = initialBalance;
+
+        // Credit the utility with the base token as the source adapter would
+        vm.prank(address(usdtHomeOAdapter));
+        usdtHomeToken.mint(address(oUsdaiUtility), amount);
+
+        // Shares the vault mints, less the amount it holds back on its first deposit
+        uint256 shares = amount - 1e6;
+
+        // LZ receive option for the onward staked USDai send
+        bytes memory receiveOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(500_000, 0);
+
+        // Cross-chain send param for the staked USDai leg
+        SendParam memory sendParam =
+            SendParam(stakedUsdaiAwayEid, addressToBytes32(user), shares, 0, receiveOptions, "", "");
+
+        // Quote the onward fee the payload asks the utility to pay
+        MessagingFee memory fee = stakedUsdaiHomeOAdapter.quoteSend(sendParam, false);
+
+        // Deposit and stake payload declaring the quoted fee
+        bytes memory composeMsg = abi.encode(
+            IOUSDaiUtility.ActionType.DepositAndStake, abi.encode(uint256(0), "", uint256(0), sendParam, fee.nativeFee)
+        );
+
+        // Encode the composer message with the base token adapter as source
+        bytes memory message =
+            OFTComposeMsgCodec.encode(1, usdtHomeEid, amount, abi.encodePacked(addressToBytes32(user), composeMsg));
+
+        // Utility endpoint that is allowed to call lzCompose
+        address endpoint = address(endpoints[usdtHomeEid]);
+
+        // Fund the endpoint to forward the exact fee
+        vm.deal(endpoint, fee.nativeFee);
+
+        // Exactly the declared fee clears the guard, which compares with a strict less than
+        vm.prank(endpoint);
+        oUsdaiUtility.lzCompose{value: fee.nativeFee}(address(usdtHomeOAdapter), bytes32(0), message, address(0), "");
+
+        // Deliver the packet to the away chain
+        verifyPackets(stakedUsdaiAwayEid, addressToBytes32(address(stakedUsdaiAwayOAdapter)));
+
+        // Assert the onward send went through
+        /// forge-lint: disable-next-line
+        assertEq(stakedUsdaiAwayToken.balanceOf(user), (shares / 10 ** 12) * 10 ** 12);
+    }
 }
