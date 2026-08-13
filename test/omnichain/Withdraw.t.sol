@@ -31,7 +31,7 @@ contract OUSDaiUtilityWithdrawTest is OmnichainBaseTest {
 
         vm.startPrank(user);
 
-        // Deposit USDT to get USDai (MockUSDai now holds USDT for withdrawals)
+        // Deposit USDT to get USDai (USDai now holds USDT for withdrawals)
         usdtHomeToken.approve(address(usdai), initialBalance);
         depositAmount = usdai.deposit(address(usdtHomeToken), initialBalance, initialBalance - 1e6, user);
 

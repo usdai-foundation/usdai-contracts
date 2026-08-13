@@ -16,7 +16,7 @@ import {IOUSDaiUtility} from "src/interfaces/IOUSDaiUtility.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract OUSDaiUtilityDepositTest is OmnichainBaseTest {
+contract OUSDaiUtilityDepositAndStakeTest is OmnichainBaseTest {
     using OptionsBuilder for bytes;
 
     // Test deposit of USD
@@ -46,7 +46,7 @@ contract OUSDaiUtilityDepositTest is OmnichainBaseTest {
         bytes memory composeMsg = abi.encode(IOUSDaiUtility.ActionType.DepositAndStake, suffix);
 
         // LZ composer option
-        bytes memory composerOptions = receiveOptions.addExecutorLzComposeOption(0, 1_000_000, uint128(fee.nativeFee));
+        bytes memory composerOptions = receiveOptions.addExecutorLzComposeOption(0, 2_000_000, uint128(fee.nativeFee));
 
         // Send param for USD away to USD home
         SendParam memory usdtSendParam = SendParam({
@@ -115,7 +115,7 @@ contract OUSDaiUtilityDepositTest is OmnichainBaseTest {
         bytes memory composeMsg = abi.encode(IOUSDaiUtility.ActionType.DepositAndStake, suffix);
 
         // LZ composer option
-        bytes memory composerOptions = receiveOptions.addExecutorLzComposeOption(0, 1_000_000, 0);
+        bytes memory composerOptions = receiveOptions.addExecutorLzComposeOption(0, 2_000_000, 0);
 
         // Send param for USD away to USD home
         SendParam memory usdtSendParam = SendParam({
@@ -218,7 +218,7 @@ contract OUSDaiUtilityDepositTest is OmnichainBaseTest {
         bytes memory composeMsg = abi.encode(IOUSDaiUtility.ActionType.DepositAndStake, suffix);
 
         // LZ composer option
-        bytes memory composerOptions = receiveOptions.addExecutorLzComposeOption(0, 1_000_000, uint128(fee.nativeFee));
+        bytes memory composerOptions = receiveOptions.addExecutorLzComposeOption(0, 2_000_000, uint128(fee.nativeFee));
 
         // Send param for USD away to USD home
         SendParam memory usdtSendParam = SendParam({
@@ -294,7 +294,7 @@ contract OUSDaiUtilityDepositTest is OmnichainBaseTest {
         bytes memory composeMsg = abi.encode(IOUSDaiUtility.ActionType.DepositAndStake, suffix);
 
         // LZ composer option
-        bytes memory composerOptions = receiveOptions.addExecutorLzComposeOption(0, 1_000_000, uint128(fee.nativeFee));
+        bytes memory composerOptions = receiveOptions.addExecutorLzComposeOption(0, 2_000_000, uint128(fee.nativeFee));
 
         // Send param for USD away to USD home
         SendParam memory usdtSendParam = SendParam({

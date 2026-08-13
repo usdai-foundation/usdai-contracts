@@ -29,10 +29,10 @@ import {TestHelperOz5} from "@layerzerolabs/test-devtools-evm-foundry/contracts/
 
 // Implementation imports
 import {OUSDaiUtility} from "src/omnichain/OUSDaiUtility.sol";
+import {USDai} from "src/USDai.sol";
+import {StakedUSDai} from "src/StakedUSDai.sol";
 
 // Mock imports
-import {MockUSDai} from "../mocks/MockUSDai.sol";
-import {MockStakedUSDai} from "../mocks/MockStakedUSDai.sol";
 import {MockLoanRouter} from "../mocks/MockLoanRouter.sol";
 
 // Interface imports
@@ -44,6 +44,9 @@ import {IStakedUSDai} from "src/interfaces/IStakedUSDai.sol";
  * @author USD.AI Foundation
  * @author Modified from https://github.com/PaulRBerg/prb-proxy/blob/main/test/Base.t.sol
  *
+ * @notice Deploys the real USDai and StakedUSDai contracts against the LayerZero test harness.
+ *         The only stub is the loan router, which reports no positions so the vault valuation
+ *         reduces to its USDai deposit balance.
  */
 abstract contract OmnichainBaseTest is TestHelperOz5 {
     using OptionsBuilder for bytes;
@@ -71,6 +74,8 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
 
     OUSDaiUtility internal oUsdaiUtility;
 
+    MockLoanRouter internal mockLoanRouter;
+
     uint256 internal initialBalance = 20_000_000 ether;
 
     IUSDai internal usdai;
@@ -79,33 +84,50 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
     address internal user = address(0x1);
     address internal blacklistedUser = address(0x2);
 
+    /**
+     * @notice Deploy an OToken behind a proxy with no adapter wired yet
+     * @param name Token name and symbol
+     * @return Token proxy
+     */
+    function _deployOToken(
+        string memory name
+    ) internal returns (OToken) {
+        OToken impl = new OToken(address(0));
+        TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(
+            address(impl),
+            address(this),
+            abi.encodeWithSignature("initialize(string,string,address)", name, name, address(this))
+        );
+        return OToken(address(proxy));
+    }
+
+    /**
+     * @notice Point an OToken proxy at a fresh implementation bound to its adapter
+     * @param token Token proxy
+     * @param oAdapter Adapter to bind
+     */
+    function _bindOTokenAdapter(OToken token, address oAdapter) internal {
+        OToken impl = new OToken(oAdapter);
+        address proxyAdmin = address(uint160(uint256(vm.load(address(token), ERC1967Utils.ADMIN_SLOT))));
+        ProxyAdmin(proxyAdmin).upgradeAndCall(ITransparentUpgradeableProxy(address(token)), address(impl), "");
+    }
+
+    /**
+     * @notice Build a single destination rate limit config
+     * @param dstEid Destination endpoint ID
+     * @return Rate limit config array
+     */
+    function _rateLimit(
+        uint32 dstEid
+    ) internal view returns (RateLimiter.RateLimitConfig[] memory) {
+        RateLimiter.RateLimitConfig[] memory configs = new RateLimiter.RateLimitConfig[](1);
+        configs[0] = RateLimiter.RateLimitConfig({dstEid: dstEid, limit: initialBalance, window: 1 days});
+        return configs;
+    }
+
     function setUp() public virtual override {
         // Call the base setup function from the TestHelperOz5 contract
         TestHelperOz5.setUp();
-
-        // Deploy mock USDai
-        IUSDai usdaiImpl = new MockUSDai(address(0));
-
-        /* Deploy usdai proxy */
-        TransparentUpgradeableProxy usdaiProxy =
-            new TransparentUpgradeableProxy(address(usdaiImpl), address(this), abi.encodeWithSignature("initialize()"));
-
-        /* Cast usdai */
-        usdai = IUSDai(address(usdaiProxy));
-
-        // Deploy mock loan router
-        MockLoanRouter mockLoanRouter = new MockLoanRouter();
-
-        // Deploy mock staked usdai implementation
-        IStakedUSDai stakedUsdaiImpl = new MockStakedUSDai(address(usdai), address(mockLoanRouter), address(0));
-
-        /* Deploy staked usdai proxy */
-        TransparentUpgradeableProxy stakedUsdaiProxy = new TransparentUpgradeableProxy(
-            address(stakedUsdaiImpl), address(this), abi.encodeWithSignature("initialize()")
-        );
-
-        /* Cast staked usdai */
-        stakedUsdai = IStakedUSDai(address(stakedUsdaiProxy));
 
         // Provide initial Ether balances to users for testing purposes
         vm.deal(user, 1000 ether);
@@ -114,71 +136,35 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
         // Initialize 6 endpoints, using UltraLightNode as the library type
         setUpEndpoints(6, LibraryType.UltraLightNode);
 
-        // Deploy tokens
-        OToken usdtHomeTokenImpl = new OToken(address(0));
-        OToken usdtAwayTokenImpl = new OToken(address(0));
-        OToken usdaiAwayTokenImpl = new OToken(address(0));
-        OToken stakedUsdaiAwayTokenImpl = new OToken(address(0));
+        // Deploy the OTokens, the base token comes first so USDai can read its decimals
+        usdtHomeToken = _deployOToken("usdtHomeToken");
+        usdtAwayToken = _deployOToken("usdtAwayToken");
+        usdaiAwayToken = _deployOToken("usdaiAwayToken");
+        stakedUsdaiAwayToken = _deployOToken("stakedUsdaiAwayToken");
 
-        // Deploy USDT proxies
-        TransparentUpgradeableProxy usdtHomeTokenProxy = new TransparentUpgradeableProxy(
-            address(usdtHomeTokenImpl),
-            address(this),
-            abi.encodeWithSignature(
-                "initialize(string,string,address)", "usdtHomeToken", "usdtHomeToken", address(this)
-            )
+        // Deploy the loan router stub used by the StakedUSDai valuation
+        mockLoanRouter = new MockLoanRouter();
+
+        // Deploy USDai behind a proxy with the base token fixed and no bridge adapter yet
+        USDai usdaiImpl = new USDai(address(usdtHomeToken), address(0), address(0), address(0));
+        TransparentUpgradeableProxy usdaiProxy = new TransparentUpgradeableProxy(
+            address(usdaiImpl), address(this), abi.encodeWithSignature("initialize(address)", address(this))
         );
-        TransparentUpgradeableProxy usdtAwayTokenProxy = new TransparentUpgradeableProxy(
-            address(usdtAwayTokenImpl),
-            address(this),
-            abi.encodeWithSignature(
-                "initialize(string,string,address)", "usdtAwayToken", "usdtAwayToken", address(this)
-            )
+        usdai = IUSDai(address(usdaiProxy));
+
+        // Grant the blacklist admin role so the test can mark accounts blacklisted
+        AccessControl(address(usdai)).grantRole(keccak256("BLACKLIST_ADMIN_ROLE"), address(this));
+
+        // Deploy StakedUSDai behind a proxy with zero fee rates and no bridge adapter yet
+        StakedUSDai stakedUsdaiImpl = new StakedUSDai(
+            address(usdai), address(mockLoanRouter), address(this), uint64(block.timestamp), 0, 0, address(0)
         );
-        TransparentUpgradeableProxy usdaiAwayTokenProxy = new TransparentUpgradeableProxy(
-            address(usdaiAwayTokenImpl),
-            address(this),
-            abi.encodeWithSignature(
-                "initialize(string,string,address)", "usdaiAwayToken", "usdaiAwayToken", address(this)
-            )
+        TransparentUpgradeableProxy stakedUsdaiProxy = new TransparentUpgradeableProxy(
+            address(stakedUsdaiImpl), address(this), abi.encodeWithSignature("initialize(address)", address(this))
         );
-        TransparentUpgradeableProxy stakedUsdaiAwayTokenProxy = new TransparentUpgradeableProxy(
-            address(stakedUsdaiAwayTokenImpl),
-            address(this),
-            abi.encodeWithSignature(
-                "initialize(string,string,address)", "stakedUsdaiAwayToken", "stakedUsdaiAwayToken", address(this)
-            )
-        );
-        usdtHomeToken = OToken(address(usdtHomeTokenProxy));
-        usdtAwayToken = OToken(address(usdtAwayTokenProxy));
-        usdaiAwayToken = OToken(address(usdaiAwayTokenProxy));
-        stakedUsdaiAwayToken = OToken(address(stakedUsdaiAwayTokenProxy));
+        stakedUsdai = IStakedUSDai(address(stakedUsdaiProxy));
 
-        // Deploy USDT rate limit configs
-        RateLimiter.RateLimitConfig[] memory rateLimitConfigsUsdtHome = new RateLimiter.RateLimitConfig[](1);
-        rateLimitConfigsUsdtHome[0] =
-            RateLimiter.RateLimitConfig({dstEid: usdtAwayEid, limit: initialBalance, window: 1 days});
-        RateLimiter.RateLimitConfig[] memory rateLimitConfigsUsdtAway = new RateLimiter.RateLimitConfig[](1);
-        rateLimitConfigsUsdtAway[0] =
-            RateLimiter.RateLimitConfig({dstEid: usdtHomeEid, limit: initialBalance, window: 1 days});
-
-        // Deploy USDAI rate limit configs
-        RateLimiter.RateLimitConfig[] memory rateLimitConfigsUsdaiHome = new RateLimiter.RateLimitConfig[](1);
-        rateLimitConfigsUsdaiHome[0] =
-            RateLimiter.RateLimitConfig({dstEid: usdaiAwayEid, limit: initialBalance, window: 1 days});
-        RateLimiter.RateLimitConfig[] memory rateLimitConfigsUsdaiAway = new RateLimiter.RateLimitConfig[](1);
-        rateLimitConfigsUsdaiAway[0] =
-            RateLimiter.RateLimitConfig({dstEid: usdaiHomeEid, limit: initialBalance, window: 1 days});
-
-        // Deploy staked USDAI rate limit configs
-        RateLimiter.RateLimitConfig[] memory rateLimitConfigsStakedUsdaiHome = new RateLimiter.RateLimitConfig[](1);
-        rateLimitConfigsStakedUsdaiHome[0] =
-            RateLimiter.RateLimitConfig({dstEid: stakedUsdaiAwayEid, limit: initialBalance, window: 1 days});
-        RateLimiter.RateLimitConfig[] memory rateLimitConfigsStakedUsdaiAway = new RateLimiter.RateLimitConfig[](1);
-        rateLimitConfigsStakedUsdaiAway[0] =
-            RateLimiter.RateLimitConfig({dstEid: stakedUsdaiHomeEid, limit: initialBalance, window: 1 days});
-
-        // Deploy two instances of USDT OAdapter for testing, associating them with respective endpoints
+        // Deploy the USDT OAdapters and set their rate limits
         usdtHomeOAdapter = OAdapter(
             _deployOApp(
                 type(OAdapter).creationCode,
@@ -191,10 +177,10 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
                 abi.encode(address(usdtAwayToken), address(endpoints[usdtAwayEid]), address(this))
             )
         );
-        usdtHomeOAdapter.setRateLimits(rateLimitConfigsUsdtHome);
-        usdtAwayOAdapter.setRateLimits(rateLimitConfigsUsdtAway);
+        usdtHomeOAdapter.setRateLimits(_rateLimit(usdtAwayEid));
+        usdtAwayOAdapter.setRateLimits(_rateLimit(usdtHomeEid));
 
-        // Deploy two instances of USDAI OAdapter for testing, associating them with respective endpoints
+        // Deploy the USDai OAdapters and set their rate limits
         usdaiHomeOAdapter = OAdapter(
             _deployOApp(
                 type(OAdapter).creationCode, abi.encode(address(usdai), address(endpoints[usdaiHomeEid]), address(this))
@@ -206,10 +192,10 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
                 abi.encode(address(usdaiAwayToken), address(endpoints[usdaiAwayEid]), address(this))
             )
         );
-        usdaiHomeOAdapter.setRateLimits(rateLimitConfigsUsdaiHome);
-        usdaiAwayOAdapter.setRateLimits(rateLimitConfigsUsdaiAway);
+        usdaiHomeOAdapter.setRateLimits(_rateLimit(usdaiAwayEid));
+        usdaiAwayOAdapter.setRateLimits(_rateLimit(usdaiHomeEid));
 
-        // Deploy two instances of staked USDAI OAdapter for testing, associating them with respective endpoints
+        // Deploy the staked USDai OAdapters and set their rate limits
         stakedUsdaiHomeOAdapter = OAdapter(
             _deployOApp(
                 type(OAdapter).creationCode,
@@ -222,91 +208,36 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
                 abi.encode(address(stakedUsdaiAwayToken), address(endpoints[stakedUsdaiAwayEid]), address(this))
             )
         );
-        stakedUsdaiHomeOAdapter.setRateLimits(rateLimitConfigsStakedUsdaiHome);
-        stakedUsdaiAwayOAdapter.setRateLimits(rateLimitConfigsStakedUsdaiAway);
+        stakedUsdaiHomeOAdapter.setRateLimits(_rateLimit(stakedUsdaiAwayEid));
+        stakedUsdaiAwayOAdapter.setRateLimits(_rateLimit(stakedUsdaiHomeEid));
 
-        /* Deploy usdai implementation */
-        usdaiImpl = new MockUSDai(address(usdaiHomeOAdapter));
-
-        /* Lookup proxy admin from EIP-1967 storage slot */
+        // Upgrade USDai to bind the home adapter as its bridge adapter
+        usdaiImpl = new USDai(address(usdtHomeToken), address(0), address(0), address(usdaiHomeOAdapter));
         address proxyAdmin = address(uint160(uint256(vm.load(address(usdai), ERC1967Utils.ADMIN_SLOT))));
+        ProxyAdmin(proxyAdmin).upgradeAndCall(ITransparentUpgradeableProxy(address(usdai)), address(usdaiImpl), "");
 
-        ProxyAdmin(proxyAdmin).upgradeAndCall(
-            ITransparentUpgradeableProxy(address(usdai)),
-            address(usdaiImpl),
-            "" // No additional initialization data
+        // Upgrade StakedUSDai to bind the home adapter as its bridge adapter
+        stakedUsdaiImpl = new StakedUSDai(
+            address(usdai),
+            address(mockLoanRouter),
+            address(this),
+            uint64(block.timestamp),
+            0,
+            0,
+            address(stakedUsdaiHomeOAdapter)
         );
-
-        /* Set the USDai base token to the USDT home token */
-        MockUSDai(address(usdai)).setBaseToken(address(usdtHomeToken));
-
-        /* Deploy staked usdai implementation */
-        stakedUsdaiImpl = new MockStakedUSDai(address(usdai), address(mockLoanRouter), address(stakedUsdaiHomeOAdapter));
-
-        /* Lookup proxy admin from EIP-1967 storage slot */
         proxyAdmin = address(uint160(uint256(vm.load(address(stakedUsdai), ERC1967Utils.ADMIN_SLOT))));
-
         ProxyAdmin(proxyAdmin).upgradeAndCall(
-            ITransparentUpgradeableProxy(address(stakedUsdai)),
-            address(stakedUsdaiImpl),
-            "" // No additional initialization data
+            ITransparentUpgradeableProxy(address(stakedUsdai)), address(stakedUsdaiImpl), ""
         );
 
-        /* Deploy staked usdai implementation */
-        stakedUsdaiImpl = new MockStakedUSDai(address(usdai), address(mockLoanRouter), address(stakedUsdaiHomeOAdapter));
+        // Bind each OToken to its adapter now that the adapters exist
+        _bindOTokenAdapter(usdtHomeToken, address(usdtHomeOAdapter));
+        _bindOTokenAdapter(usdtAwayToken, address(usdtAwayOAdapter));
+        _bindOTokenAdapter(usdaiAwayToken, address(usdaiAwayOAdapter));
+        _bindOTokenAdapter(stakedUsdaiAwayToken, address(stakedUsdaiAwayOAdapter));
 
-        /* Lookup proxy admin from EIP-1967 storage slot */
-        proxyAdmin = address(uint160(uint256(vm.load(address(stakedUsdai), ERC1967Utils.ADMIN_SLOT))));
-
-        ProxyAdmin(proxyAdmin).upgradeAndCall(
-            ITransparentUpgradeableProxy(address(stakedUsdai)),
-            address(stakedUsdaiImpl),
-            "" // No additional initialization data
-        );
-
-        // Redeploy omnichain tokens
-        usdtHomeTokenImpl = new OToken(address(usdtHomeOAdapter));
-        usdtAwayTokenImpl = new OToken(address(usdtAwayOAdapter));
-        usdaiAwayTokenImpl = new OToken(address(usdaiAwayOAdapter));
-        stakedUsdaiAwayTokenImpl = new OToken(address(stakedUsdaiAwayOAdapter));
-
-        /* Lookup proxy admin from EIP-1967 storage slot */
-        proxyAdmin = address(uint160(uint256(vm.load(address(usdtHomeToken), ERC1967Utils.ADMIN_SLOT))));
-
-        ProxyAdmin(proxyAdmin).upgradeAndCall(
-            ITransparentUpgradeableProxy(address(usdtHomeToken)),
-            address(usdtHomeTokenImpl),
-            "" // No additional initialization data
-        );
-
-        /* Lookup proxy admin from EIP-1967 storage slot */
-        proxyAdmin = address(uint160(uint256(vm.load(address(usdtAwayToken), ERC1967Utils.ADMIN_SLOT))));
-
-        ProxyAdmin(proxyAdmin).upgradeAndCall(
-            ITransparentUpgradeableProxy(address(usdtAwayToken)),
-            address(usdtAwayTokenImpl),
-            "" // No additional initialization data
-        );
-
-        /* Lookup proxy admin from EIP-1967 storage slot */
-        proxyAdmin = address(uint160(uint256(vm.load(address(usdaiAwayToken), ERC1967Utils.ADMIN_SLOT))));
-
-        ProxyAdmin(proxyAdmin).upgradeAndCall(
-            ITransparentUpgradeableProxy(address(usdaiAwayToken)),
-            address(usdaiAwayTokenImpl),
-            "" // No additional initialization data
-        );
-
-        /* Lookup proxy admin from EIP-1967 storage slot */
-        proxyAdmin = address(uint160(uint256(vm.load(address(stakedUsdaiAwayToken), ERC1967Utils.ADMIN_SLOT))));
-
-        ProxyAdmin(proxyAdmin).upgradeAndCall(
-            ITransparentUpgradeableProxy(address(stakedUsdaiAwayToken)),
-            address(stakedUsdaiAwayTokenImpl),
-            "" // No additional initialization data
-        );
-
-        // Configure and wire the USDT OAdapters together
+        // Configure and wire the OAdapters together
         address[] memory oAdapters = new address[](6);
         oAdapters[0] = address(usdtHomeOAdapter);
         oAdapters[1] = address(usdtAwayOAdapter);
@@ -316,7 +247,7 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
         oAdapters[5] = address(stakedUsdaiAwayOAdapter);
         this.wireOApps(oAdapters);
 
-        // Deploy the composer receiver
+        // Deploy the composer utility bound to the base token endpoint
         address[] memory oAdaptersUtility = new address[](2);
         oAdaptersUtility[0] = address(usdtHomeOAdapter);
         oAdaptersUtility[1] = address(usdaiHomeOAdapter);
@@ -345,7 +276,6 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
         vm.stopPrank();
 
         // Set user as blacklisted
-        AccessControl(address(stakedUsdai)).grantRole(keccak256("BLACKLIST_ADMIN_ROLE"), address(this));
         usdai.setBlacklist(blacklistedUser, true);
     }
 }
