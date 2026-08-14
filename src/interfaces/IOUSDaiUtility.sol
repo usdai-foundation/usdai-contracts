@@ -16,7 +16,6 @@ interface IOUSDaiUtility {
     enum ActionType {
         Deposit,
         DepositAndStake,
-        QueuedDeposit, /* deprecated no-op, kept for enum ordinal stability */
         Stake,
         Withdraw
     }
