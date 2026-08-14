@@ -1,3 +1,14 @@
+* OUSDaiUtility v2.0 - 08/17/2026
+    * Simplify compose message encoding.
+    * Add EVM `refundTo` address to compose message data.
+    * Change recipient address type to `bytes32`, destination EID type to
+      `uint32` in composer events.
+    * Add validation for native fee amount.
+    * Remove deprecated queued deposit action.
+    * Remove OAdapter whitelisting.
+    * Replace `DEFAULT_ADMIN_ROLE` with immutable address.
+    * Rename `rescue()` API to `rescueERC20()` and add `rescueETH()` API.
+
 * StakedUSDai v1.12 - 07/28/2026
     * Add cash-out refinance support.
 
