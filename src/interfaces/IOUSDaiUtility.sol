@@ -124,30 +124,6 @@ interface IOUSDaiUtility {
      */
     event ActionFailed(string indexed action, bytes reason);
 
-    /**
-     * @notice Whitelisted OAdapters added event
-     * @param oAdapters OAdapters added
-     */
-    event WhitelistedOAdaptersAdded(address[] oAdapters);
-
-    /**
-     * @notice Whitelisted OAdapters removed event
-     * @param oAdapters OAdapters removed
-     */
-    event WhitelistedOAdaptersRemoved(address[] oAdapters);
-
-    /*------------------------------------------------------------------------*/
-    /* Getters */
-    /*------------------------------------------------------------------------*/
-
-    /**
-     * @notice Get whitelisted OAdapters
-     * @param offset Offset into list
-     * @param count Count to return
-     * @return OAdapters
-     */
-    function whitelistedOAdapters(uint256 offset, uint256 count) external view returns (address[] memory);
-
     /*------------------------------------------------------------------------*/
     /* Public API */
     /*------------------------------------------------------------------------*/
@@ -169,22 +145,6 @@ interface IOUSDaiUtility {
     /*------------------------------------------------------------------------*/
     /* Permissioned API */
     /*------------------------------------------------------------------------*/
-
-    /**
-     * @notice Add whitelisted OAdapters
-     * @param oAdapters OAdapters to whitelist
-     */
-    function addWhitelistedOAdapters(
-        address[] memory oAdapters
-    ) external;
-
-    /**
-     * @notice Remove whitelisted OAdapters
-     * @param oAdapters OAdapters to remove
-     */
-    function removeWhitelistedOAdapters(
-        address[] memory oAdapters
-    ) external;
 
     /**
      * @notice Rescue tokens

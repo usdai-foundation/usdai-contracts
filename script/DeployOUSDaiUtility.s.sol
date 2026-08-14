@@ -13,7 +13,6 @@ contract DeployOUSDaiUtility is Deployer {
     function run(
         address deployer,
         address lzEndpoint,
-        address[] memory oAdapters,
         address multisig,
         address baseTokenOAdapter
     ) public broadcast useDeployment returns (address) {
@@ -30,9 +29,7 @@ contract DeployOUSDaiUtility is Deployer {
 
         // Deploy OUSDaiUtility proxy
         TransparentUpgradeableProxy oUSDaiUtility = new TransparentUpgradeableProxy(
-            address(oUSDaiUtilityImpl),
-            deployer,
-            abi.encodeWithSelector(OUSDaiUtility.initialize.selector, multisig, oAdapters)
+            address(oUSDaiUtilityImpl), deployer, abi.encodeWithSelector(OUSDaiUtility.initialize.selector, multisig)
         );
         console.log("OUSDaiUtility proxy", address(oUSDaiUtility));
 

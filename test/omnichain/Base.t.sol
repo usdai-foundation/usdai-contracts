@@ -260,9 +260,7 @@ abstract contract OmnichainBaseTest is TestHelperOz5 {
             address(usdtHomeOAdapter)
         );
         TransparentUpgradeableProxy oUsdaiUtilityProxy = new TransparentUpgradeableProxy(
-            address(oUsdaiUtilityImpl),
-            address(this),
-            abi.encodeWithSignature("initialize(address,address[])", address(this), oAdaptersUtility)
+            address(oUsdaiUtilityImpl), address(this), abi.encodeWithSignature("initialize(address)", address(this))
         );
         oUsdaiUtility = OUSDaiUtility(payable(address(oUsdaiUtilityProxy)));
 

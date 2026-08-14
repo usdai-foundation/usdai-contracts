@@ -2,15 +2,13 @@
 pragma solidity 0.8.29;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
 import "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroComposer.sol";
 import "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/libs/OFTComposeMsgCodec.sol";
-import "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/OFTCore.sol";
+import "@layerzerolabs/lz-evm-oapp-v2/contracts/oft/interfaces/IOFT.sol";
 
 import "../interfaces/IOUSDaiUtility.sol";
 import "../interfaces/IUSDai.sol";
@@ -22,7 +20,6 @@ import "../interfaces/IStakedUSDai.sol";
  */
 contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, AccessControlUpgradeable, IOUSDaiUtility {
     using SafeERC20 for IERC20;
-    using EnumerableSet for EnumerableSet.AddressSet;
 
     /*------------------------------------------------------------------------*/
     /* Constants */
@@ -73,15 +70,6 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
     IOFT internal immutable _baseTokenOAdapter;
 
     /*------------------------------------------------------------------------*/
-    /* State */
-    /*------------------------------------------------------------------------*/
-
-    /**
-     * @notice Whitelisted OAdapters
-     */
-    EnumerableSet.AddressSet internal _whitelistedOAdapters;
-
-    /*------------------------------------------------------------------------*/
     /* Constructor */
     /*------------------------------------------------------------------------*/
 
@@ -120,15 +108,12 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
     /**
      * @notice Initializer
      * @param admin Default admin address
-     * @param oAdapters OAdapters to whitelist
      */
-    function initialize(address admin, address[] memory oAdapters) external initializer {
+    function initialize(
+        address admin
+    ) external initializer {
         __ReentrancyGuard_init();
         __AccessControl_init();
-
-        for (uint256 i = 0; i < oAdapters.length; i++) {
-            _whitelistedOAdapters.add(oAdapters[i]);
-        }
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
     }
@@ -136,6 +121,18 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
     /*------------------------------------------------------------------------*/
     /* Internal helpers */
     /*------------------------------------------------------------------------*/
+
+    /**
+     * @notice Validate the OAdapter
+     * @param oAdapter OAdapter to validate
+     */
+    function _validateOAdapter(
+        address oAdapter
+    ) internal view {
+        if (oAdapter != address(_usdaiOAdapter) && oAdapter != address(_baseTokenOAdapter)) {
+            revert InvalidAddress();
+        }
+    }
 
     /**
      * @notice Refund
@@ -441,28 +438,6 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
     }
 
     /*------------------------------------------------------------------------*/
-    /* Getters */
-    /*------------------------------------------------------------------------*/
-
-    /**
-     * @inheritdoc IOUSDaiUtility
-     */
-    function whitelistedOAdapters(uint256 offset, uint256 count) external view returns (address[] memory) {
-        /* Clamp on count */
-        count = Math.min(count, _whitelistedOAdapters.length() - offset);
-
-        /* Create arrays */
-        address[] memory oAdapters_ = new address[](count);
-
-        /* Fill array */
-        for (uint256 i = offset; i < offset + count; i++) {
-            oAdapters_[i - offset] = _whitelistedOAdapters.at(i);
-        }
-
-        return oAdapters_;
-    }
-
-    /*------------------------------------------------------------------------*/
     /* External API */
     /*------------------------------------------------------------------------*/
 
@@ -478,8 +453,11 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
         address,
         bytes calldata
     ) external payable nonReentrant {
-        /* Validate from address and endpoint */
-        if (!_whitelistedOAdapters.contains(from) || msg.sender != _endpoint) revert InvalidAddress();
+        /* Validate endpoint */
+        if (msg.sender != _endpoint) revert InvalidAddress();
+
+        /* Validate the OAdapter */
+        _validateOAdapter(from);
 
         /* Decode the message */
         uint256 amountLD = OFTComposeMsgCodec.amountLD(message);
@@ -538,34 +516,6 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, Access
     /*------------------------------------------------------------------------*/
     /* Permissioned API */
     /*------------------------------------------------------------------------*/
-
-    /**
-     * @inheritdoc IOUSDaiUtility
-     */
-    function addWhitelistedOAdapters(
-        address[] memory oAdapters
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        for (uint256 i = 0; i < oAdapters.length; i++) {
-            _whitelistedOAdapters.add(oAdapters[i]);
-        }
-
-        /* Emit whitelisted OAdapters added event */
-        emit WhitelistedOAdaptersAdded(oAdapters);
-    }
-
-    /**
-     * @inheritdoc IOUSDaiUtility
-     */
-    function removeWhitelistedOAdapters(
-        address[] memory oAdapters
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        for (uint256 i = 0; i < oAdapters.length; i++) {
-            _whitelistedOAdapters.remove(oAdapters[i]);
-        }
-
-        /* Emit whitelisted OAdapters removed event */
-        emit WhitelistedOAdaptersRemoved(oAdapters);
-    }
 
     /**
      * @inheritdoc IOUSDaiUtility
