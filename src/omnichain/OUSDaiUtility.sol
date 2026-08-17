@@ -533,7 +533,15 @@ contract OUSDaiUtility is ILayerZeroComposer, ReentrancyGuardUpgradeable, IOUSDa
     /**
      * @inheritdoc IOUSDaiUtility
      */
-    function rescue(address token, address to, uint256 amount) external onlyAdmin {
+    function rescueERC20(address token, address to, uint256 amount) external onlyAdmin {
         IERC20(token).transfer(to, amount);
+    }
+
+    /**
+     * @inheritdoc IOUSDaiUtility
+     */
+    function rescueETH(address to, uint256 amount) external onlyAdmin {
+        (bool success,) = payable(to).call{value: amount}("");
+        require(success);
     }
 }

@@ -152,5 +152,12 @@ interface IOUSDaiUtility {
      * @param to Recipient address
      * @param amount Amount of tokens to rescue
      */
-    function rescue(address token, address to, uint256 amount) external;
+    function rescueERC20(address token, address to, uint256 amount) external;
+
+    /**
+     * @notice Rescue ETH
+     * @param to Recipient address
+     * @param amount Amount of ETH to rescue
+     */
+    function rescueETH(address to, uint256 amount) external;
 }
