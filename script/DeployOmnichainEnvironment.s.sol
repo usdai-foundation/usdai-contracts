@@ -78,7 +78,7 @@ contract DeployOmnichainEnvironment is Deployer {
         bytes memory oadapterUSDaiCalldata = abi.encodeWithSelector(
             ICreateX.deployCreate3.selector,
             OADAPTER_USDAI_SALT,
-            abi.encodePacked(type(OAdapter).creationCode, abi.encode(USDAI_ADDRESS, lzEndpoint, msg.sender))
+            abi.encodePacked(type(OAdapter).creationCode, abi.encode(USDAI_ADDRESS, lzEndpoint, multisig))
         );
 
         // Prepare Create3 Calldata for Staked USDai OAdapter
@@ -89,7 +89,7 @@ contract DeployOmnichainEnvironment is Deployer {
         bytes memory oadapterStakedUSDaiCalldata = abi.encodeWithSelector(
             ICreateX.deployCreate3.selector,
             OADAPTER_STAKED_USDAI_SALT,
-            abi.encodePacked(type(OAdapter).creationCode, abi.encode(STAKED_USDAI_ADDRESS, lzEndpoint, msg.sender))
+            abi.encodePacked(type(OAdapter).creationCode, abi.encode(STAKED_USDAI_ADDRESS, lzEndpoint, multisig))
         );
 
         // Print calldata
