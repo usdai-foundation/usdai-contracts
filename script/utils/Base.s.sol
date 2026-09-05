@@ -22,6 +22,7 @@ contract BaseScript is Script {
         _chainIdToNetwork[42161] = "arbitrum";
         _chainIdToNetwork[9745] = "plasma";
         _chainIdToNetwork[8453] = "base";
+        _chainIdToNetwork[5042] = "arc";
     }
 
     modifier broadcast() {
