@@ -288,12 +288,14 @@ contract StakedUSDai is
      * @param amount Amount to deposit
      * @param receiver Receiver address
      * @param minShares Minimum shares
+     * @param referral Referral code
      * @return Shares minted
      */
     function _deposit(
         uint256 amount,
         address receiver,
-        uint256 minShares
+        uint256 minShares,
+        uint16 referral
     ) internal whenNotPaused nonReentrant nonZeroUint(amount) nonZeroAddress(receiver) returns (uint256) {
         /* Compute shares */
         uint256 shares = convertToShares(amount);
@@ -316,6 +318,9 @@ contract StakedUSDai is
         /* Emit Deposit */
         emit Deposit(msg.sender, receiver, amount, shares);
 
+        /* Emit Referred Deposit if a referral code was provided */
+        if (referral != 0x0000) emit ReferredDeposit(msg.sender, receiver, amount, shares, referral);
+
         return shares;
     }
 
@@ -324,12 +329,14 @@ contract StakedUSDai is
      * @param shares Shares to mint
      * @param receiver Receiver address
      * @param maxAmount Maximum amount
+     * @param referral Referral code
      * @return assets Assets deposited
      */
     function _mint(
         uint256 shares,
         address receiver,
-        uint256 maxAmount
+        uint256 maxAmount,
+        uint16 referral
     ) internal whenNotPaused nonReentrant nonZeroUint(shares) nonZeroAddress(receiver) returns (uint256 assets) {
         /* Compute amount */
         uint256 amount = convertToAssets(shares);
@@ -351,6 +358,9 @@ contract StakedUSDai is
 
         /* Emit Deposit */
         emit Deposit(msg.sender, receiver, amount, shares);
+
+        /* Emit Referred Deposit if a referral code was provided */
+        if (referral != 0x0000) emit ReferredDeposit(msg.sender, receiver, amount, shares, referral);
 
         return amount;
     }
@@ -514,14 +524,14 @@ contract StakedUSDai is
      * @inheritdoc IERC4626
      */
     function deposit(uint256 amount, address receiver) external returns (uint256) {
-        return _deposit(amount, receiver, 0);
+        return _deposit(amount, receiver, 0, 0x0000);
     }
 
     /**
      * @inheritdoc IERC4626
      */
     function mint(uint256 shares, address receiver) external returns (uint256 assets) {
-        return _mint(shares, receiver, type(uint256).max);
+        return _mint(shares, receiver, type(uint256).max, 0x0000);
     }
 
     /**
@@ -610,14 +620,21 @@ contract StakedUSDai is
      * @inheritdoc IStakedUSDai
      */
     function deposit(uint256 amount, address receiver, uint256 minShares) external returns (uint256) {
-        return _deposit(amount, receiver, minShares);
+        return _deposit(amount, receiver, minShares, 0x0000);
+    }
+
+    /**
+     * @inheritdoc IStakedUSDai
+     */
+    function deposit(uint256 amount, address receiver, uint256 minShares, uint16 referral) external returns (uint256) {
+        return _deposit(amount, receiver, minShares, referral);
     }
 
     /**
      * @inheritdoc IStakedUSDai
      */
     function mint(uint256 shares, address receiver, uint256 maxAmount) external returns (uint256) {
-        return _mint(shares, receiver, maxAmount);
+        return _mint(shares, receiver, maxAmount, 0x0000);
     }
 
     /*------------------------------------------------------------------------*/

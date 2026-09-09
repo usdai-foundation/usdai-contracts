@@ -95,6 +95,18 @@ interface IStakedUSDai is IBasePositionManager {
      */
     event RedemptionsServiced(uint256 shares, uint256 amount, bool allRedemptionsServiced);
 
+    /**
+     * @notice Referred Deposit
+     * @param sender Sender address
+     * @param receiver Receiver address
+     * @param assets Assets deposited
+     * @param shares Shares minted
+     * @param referral Referral code
+     */
+    event ReferredDeposit(
+        address indexed sender, address indexed receiver, uint256 assets, uint256 shares, uint16 referral
+    );
+
     /*------------------------------------------------------------------------*/
     /* Getters */
     /*------------------------------------------------------------------------*/
@@ -192,6 +204,16 @@ interface IStakedUSDai is IBasePositionManager {
      * @return Shares minted
      */
     function deposit(uint256 amount, address receiver, uint256 minShares) external returns (uint256);
+
+    /**
+     * @notice Overload of IERC4626 deposit
+     * @param amount Amount to deposit
+     * @param receiver Receiver address
+     * @param minShares Minimum shares
+     * @param referral Referral code
+     * @return Shares minted
+     */
+    function deposit(uint256 amount, address receiver, uint256 minShares, uint16 referral) external returns (uint256);
 
     /**
      * @notice Overload of IERC4626 mint

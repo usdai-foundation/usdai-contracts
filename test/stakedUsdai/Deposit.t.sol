@@ -3,6 +3,7 @@ pragma solidity 0.8.29;
 
 import {BaseTest} from "../Base.t.sol";
 import {IStakedUSDai} from "src/interfaces/IStakedUSDai.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 contract StakedUSDaiDepositTest is BaseTest {
@@ -28,6 +29,18 @@ contract StakedUSDaiDepositTest is BaseTest {
 
         // Assert preview deposit matches convertToShares
         assertEq(stakedUsdai.previewDeposit(1_000_000 ether), stakedUsdai.convertToShares(1_000_000 ether));
+
+        // Assert ERC4626 Deposit event is emitted
+        vm.expectEmit(true, true, false, true, address(stakedUsdai));
+        emit IERC4626.Deposit(
+            users.normalUser1, users.normalUser1, 1_000_000 ether, stakedUsdai.convertToShares(1_000_000 ether)
+        );
+
+        // Assert ReferredDeposit event is not emitted without a referral code
+        vm.expectEmit(true, true, false, false, address(stakedUsdai), 0);
+        emit IStakedUSDai.ReferredDeposit(
+            users.normalUser1, users.normalUser1, 1_000_000 ether, stakedUsdai.convertToShares(1_000_000 ether), 0x0000
+        );
 
         // User deposits USDai into StakedUSDai
         uint256 shares = stakedUsdai.deposit(1_000_000 ether, users.normalUser1);
@@ -164,6 +177,31 @@ contract StakedUSDaiDepositTest is BaseTest {
         vm.startPrank(users.normalUser1);
         vm.expectRevert(Pausable.EnforcedPause.selector);
         stakedUsdai.deposit(1 ether, users.normalUser1);
+        vm.stopPrank();
+    }
+
+    function test__StakedUSDaiDeposit_WithReferralCode() public {
+        vm.startPrank(users.normalUser1);
+        usdai.approve(address(stakedUsdai), 1_000_000 ether);
+
+        uint256 expectedShares = stakedUsdai.convertToShares(1_000_000 ether);
+        uint16 referral = 0x0539;
+
+        // Assert ERC4626 Deposit event is emitted
+        vm.expectEmit(true, true, false, true, address(stakedUsdai));
+        emit IERC4626.Deposit(users.normalUser1, users.normalUser1, 1_000_000 ether, expectedShares);
+
+        // Assert ReferredDeposit event is emitted with the referral code
+        vm.expectEmit(true, true, false, true, address(stakedUsdai));
+        emit IStakedUSDai.ReferredDeposit(
+            users.normalUser1, users.normalUser1, 1_000_000 ether, expectedShares, referral
+        );
+
+        uint256 shares = stakedUsdai.deposit(1_000_000 ether, users.normalUser1, expectedShares, referral);
+
+        // Assert shares received matches
+        assertEq(shares, expectedShares, "Shares mismatch");
+
         vm.stopPrank();
     }
 }
