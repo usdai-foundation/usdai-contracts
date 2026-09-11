@@ -1,3 +1,7 @@
+* StakedUSDai v1.13 - 09/18/2026
+    * Add `deposit()` API overload with referral code and corresponding
+      `ReferredDeposit` event.
+
 * USDai v1.7 - 09/18/2026
     * Update OUSDaiUtility address in blacklist exclusion list with v2.0
       deployment.
