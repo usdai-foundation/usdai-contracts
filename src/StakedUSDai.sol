@@ -363,10 +363,10 @@ contract StakedUSDai is
     }
 
     /**
-     * @notice Check if address is blacklisted
+     * @notice Validate address is not blacklisted
      * @param account Address to check
      */
-    function _isBlacklisted(
+    function _validateNotBlacklisted(
         address account
     ) internal view {
         if (_usdai.isBlacklisted(account)) revert BlacklistedAddress(account);
@@ -380,9 +380,9 @@ contract StakedUSDai is
      * @inheritdoc ERC20Upgradeable
      */
     function _update(address from, address to, uint256 value) internal override {
-        _isBlacklisted(msg.sender);
-        _isBlacklisted(from);
-        _isBlacklisted(to);
+        _validateNotBlacklisted(msg.sender);
+        _validateNotBlacklisted(from);
+        _validateNotBlacklisted(to);
 
         super._update(from, to, value);
     }
@@ -541,7 +541,7 @@ contract StakedUSDai is
         returns (uint256)
     {
         /* Validate controller is not blacklisted */
-        _isBlacklisted(controller);
+        _validateNotBlacklisted(controller);
 
         /* Validate caller */
         if (controller != msg.sender && !_getIsOperatorStorage().isOperator[controller][msg.sender]) {
@@ -580,7 +580,7 @@ contract StakedUSDai is
         returns (uint256)
     {
         /* Validate controller is not blacklisted */
-        _isBlacklisted(controller);
+        _validateNotBlacklisted(controller);
 
         /* Validate caller */
         if (controller != msg.sender && !_getIsOperatorStorage().isOperator[controller][msg.sender]) {
@@ -646,7 +646,7 @@ contract StakedUSDai is
         bool approved
     ) external whenNotPaused nonReentrant nonZeroAddress(operator) returns (bool) {
         /* Validate address is not blacklisted */
-        _isBlacklisted(msg.sender);
+        _validateNotBlacklisted(msg.sender);
 
         /* Validate caller */
         if (msg.sender == operator) revert InvalidAddress();
@@ -707,7 +707,7 @@ contract StakedUSDai is
         returns (uint256)
     {
         /* Validate address is not blacklisted */
-        _isBlacklisted(controller);
+        _validateNotBlacklisted(controller);
 
         /* Validate caller */
         if (owner != msg.sender && !_getIsOperatorStorage().isOperator[owner][msg.sender]) revert InvalidCaller();
