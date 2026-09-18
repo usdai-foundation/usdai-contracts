@@ -284,7 +284,34 @@ contract StakedUSDai is
     }
 
     /**
-     * @notice Deposit assets
+     * @notice Mint shares and deposit amount
+     * @param amount Amount deposited
+     * @param shares Shares minted
+     * @param receiver Receiver address
+     * @param referral Referral code
+     */
+    function _mintAndDeposit(uint256 amount, uint256 shares, address receiver, uint16 referral) internal {
+        /* If initial deposit, mint locked shares */
+        if (totalSupply() < LOCKED_SHARES) _mint(address(0xdead), LOCKED_SHARES);
+
+        /* Mint shares */
+        _mint(receiver, shares);
+
+        /* Update deposits balance */
+        _getDepositsStorage().balance += amount;
+
+        /* Deposit assets */
+        IERC20(asset()).safeTransferFrom(msg.sender, address(this), amount);
+
+        /* Emit Deposit */
+        emit Deposit(msg.sender, receiver, amount, shares);
+
+        /* Emit Referred Deposit if a referral code was provided */
+        if (referral != 0x0000) emit ReferredDeposit(msg.sender, receiver, amount, shares, referral);
+    }
+
+    /**
+     * @notice Deposit assets with slippage
      * @param amount Amount to deposit
      * @param receiver Receiver address
      * @param minShares Minimum shares
@@ -303,29 +330,14 @@ contract StakedUSDai is
         /* If shares is 0 or less than min shares, revert */
         if (shares == 0 || shares < minShares) revert InvalidAmount();
 
-        /* If initial deposit, mint locked shares */
-        _mintLockedShares();
-
-        /* Mint shares */
-        _mint(receiver, shares);
-
-        /* Update deposits balance */
-        _getDepositsStorage().balance += amount;
-
-        /* Deposit assets */
-        IERC20(asset()).safeTransferFrom(msg.sender, address(this), amount);
-
-        /* Emit Deposit */
-        emit Deposit(msg.sender, receiver, amount, shares);
-
-        /* Emit Referred Deposit if a referral code was provided */
-        if (referral != 0x0000) emit ReferredDeposit(msg.sender, receiver, amount, shares, referral);
+        /* Mint shares and deposit amount */
+        _mintAndDeposit(amount, shares, receiver, referral);
 
         return shares;
     }
 
     /**
-     * @notice Mint shares
+     * @notice Mint shares with slippage
      * @param shares Shares to mint
      * @param receiver Receiver address
      * @param maxAmount Maximum amount
@@ -344,32 +356,10 @@ contract StakedUSDai is
         /* If amount is 0 or more than max amount, revert */
         if (amount == 0 || amount > maxAmount) revert InvalidAmount();
 
-        /* If initial deposit, mint locked shares */
-        _mintLockedShares();
-
-        /* Mint shares */
-        _mint(receiver, shares);
-
-        /* Update deposits balance */
-        _getDepositsStorage().balance += amount;
-
-        /* Deposit assets */
-        IERC20(asset()).safeTransferFrom(msg.sender, address(this), amount);
-
-        /* Emit Deposit */
-        emit Deposit(msg.sender, receiver, amount, shares);
-
-        /* Emit Referred Deposit if a referral code was provided */
-        if (referral != 0x0000) emit ReferredDeposit(msg.sender, receiver, amount, shares, referral);
+        /* Mint shares and deposit amount */
+        _mintAndDeposit(amount, shares, receiver, referral);
 
         return amount;
-    }
-
-    /**
-     * @notice Mint locked shares
-     */
-    function _mintLockedShares() internal {
-        if (totalSupply() < LOCKED_SHARES) _mint(address(0xdead), LOCKED_SHARES);
     }
 
     /**
