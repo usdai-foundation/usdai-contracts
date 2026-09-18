@@ -272,7 +272,7 @@ contract USDai is
         /* Exclude Staked USDai, OUSDaiUtility, and the admin fee recipient */
         if (
             account == 0x0B2b2B2076d95dda7817e785989fE353fe955ef9
-                || account == 0x24a92E28a8C5D8812DcfAf44bCb20CC0BaBd1392
+                || account == 0x5D6f3b27d1464a02bE5ada30ca0703ef0E5C8E2c
                 || account == IStakedUSDai(0x0B2b2B2076d95dda7817e785989fE353fe955ef9).adminFeeRecipient()
         ) return false;
 
