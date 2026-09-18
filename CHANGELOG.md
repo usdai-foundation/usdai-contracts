@@ -1,3 +1,7 @@
+* USDai v1.7 - 09/18/2026
+    * Update OUSDaiUtility address in blacklist exclusion list with v2.0
+      deployment.
+
 * OUSDaiUtility v2.0 - 08/17/2026
     * Simplify compose message encoding.
     * Add EVM `refundTo` address to compose message data.
