@@ -372,6 +372,16 @@ contract StakedUSDai is
         if (_usdai.isBlacklisted(account)) revert BlacklistedAddress(account);
     }
 
+    /**
+     * @notice Validate caller is account or operator for account
+     * @param account Address to check
+     */
+    function _validateOperator(
+        address account
+    ) internal view {
+        if (account != msg.sender && !_getIsOperatorStorage().isOperator[account][msg.sender]) revert InvalidCaller();
+    }
+
     /*------------------------------------------------------------------------*/
     /* ERC20Upgradeable overrides */
     /*------------------------------------------------------------------------*/
@@ -544,9 +554,7 @@ contract StakedUSDai is
         _validateNotBlacklisted(controller);
 
         /* Validate caller */
-        if (controller != msg.sender && !_getIsOperatorStorage().isOperator[controller][msg.sender]) {
-            revert InvalidCaller();
-        }
+        _validateOperator(controller);
 
         /* Withdraw amount */
         uint256 shares = RedemptionLogic._withdraw(_getRedemptionStateStorage(), amount, controller);
@@ -583,9 +591,7 @@ contract StakedUSDai is
         _validateNotBlacklisted(controller);
 
         /* Validate caller */
-        if (controller != msg.sender && !_getIsOperatorStorage().isOperator[controller][msg.sender]) {
-            revert InvalidCaller();
-        }
+        _validateOperator(controller);
 
         /* Redeem shares */
         uint256 amount = RedemptionLogic._redeem(_getRedemptionStateStorage(), shares, controller);
@@ -710,7 +716,7 @@ contract StakedUSDai is
         _validateNotBlacklisted(controller);
 
         /* Validate caller */
-        if (owner != msg.sender && !_getIsOperatorStorage().isOperator[owner][msg.sender]) revert InvalidCaller();
+        _validateOperator(owner);
 
         /* Validate balance */
         if (balanceOf(owner) < shares) revert InsufficientBalance();
