@@ -1,3 +1,7 @@
+* StakedUSDai v1.14 - 09/24/2026
+    * Add support for cash-in refinance.
+    * Fix principal dust in deposit and pending loan balance state.
+
 * StakedUSDai v1.13 - 09/18/2026
     * Add `deposit()` API overload with referral code and corresponding
       `ReferredDeposit` event.
