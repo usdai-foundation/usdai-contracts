@@ -318,6 +318,7 @@ library LoanRouterPositionManagerLogic {
 
     /**
      * @notice Handle loan refinanced hook
+     * @param depositsStorage Deposits storage
      * @param depositTimelockStorage Deposit timelock storage
      * @param loansStorage Loans storage
      * @param oldLoanTerms Old loan terms
@@ -330,6 +331,7 @@ library LoanRouterPositionManagerLogic {
      * @param loanRouter Loan router
      */
     function loanRefinanced(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
         LoanRouterPositionManager.DepositTimelock storage depositTimelockStorage,
         LoanRouterPositionManager.Loans storage loansStorage,
         ILoanRouterV2.LoanTermsV2 calldata oldLoanTerms,
@@ -378,6 +380,9 @@ library LoanRouterPositionManagerLogic {
 
         /* Delete old loan entry */
         delete loansStorage.loan[oldLoanTermsHash];
+
+        /* Credit the cash-in principal to the deposit balance */
+        depositsStorage.balance += cashIn;
 
         /* Update total pending loan balance by the notional delta */
         loansStorage.pendingBalances[oldLoanTerms.currencyToken] =

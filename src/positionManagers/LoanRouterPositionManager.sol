@@ -408,6 +408,7 @@ abstract contract LoanRouterPositionManager is
         uint256 cashIn
     ) external nonReentrant {
         LoanRouterPositionManagerLogic.loanRefinanced(
+            _getDepositsStorage(),
             _getDepositTimelockStorage(),
             _getLoansStorage(),
             oldLoanTerms,
