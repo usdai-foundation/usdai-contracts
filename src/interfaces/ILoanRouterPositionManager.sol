@@ -57,6 +57,13 @@ interface ILoanRouterPositionManager {
      */
     event LoanDepositTimelockCancelled(bytes32 indexed loanTermsHash, uint256 usdaiAmount);
 
+    /**
+     * @notice Donated
+     * @param donor Donor
+     * @param usdaiAmount USDai amount
+     */
+    event Donated(address indexed donor, uint256 usdaiAmount);
+
     /*------------------------------------------------------------------------*/
     /* Getter */
     /*------------------------------------------------------------------------*/
@@ -114,5 +121,13 @@ interface ILoanRouterPositionManager {
      */
     function cancelLoanDepositTimelock(
         bytes32 loanTermsHash
+    ) external;
+
+    /**
+     * @notice Donate USDai to the vault
+     * @param usdaiAmount USDai amount
+     */
+    function donate(
+        uint256 usdaiAmount
     ) external;
 }

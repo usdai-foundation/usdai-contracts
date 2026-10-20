@@ -8,6 +8,7 @@ import {ICollateralTimelock} from "@usdai-loan-router-contracts/interfaces/IColl
 import {IDepositTimelock} from "@usdai-loan-router-contracts/interfaces/IDepositTimelock.sol";
 import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
 
+import {ILoanRouterPositionManager} from "src/interfaces/ILoanRouterPositionManager.sol";
 import {LoanRouterPositionManagerLogic} from "src/positionManagers/LoanRouterPositionManagerLogic.sol";
 
 import {BaseLoanRouterTest} from "./Base.t.sol";
@@ -281,5 +282,33 @@ contract LoanRouterPositionManagerTest is BaseLoanRouterTest {
         vm.prank(users.borrower);
         vm.expectRevert(LoanRouterPositionManagerLogic.InvalidCaller.selector);
         stakedUsdai.onLoanFeePaid(loanTerms, LOAN_HASH, 0, 1e6);
+    }
+
+    /*------------------------------------------------------------------------*/
+    /* donate */
+    /*------------------------------------------------------------------------*/
+
+    function test__Donate_IncreasesDepositBalanceAndTransfersUsdai() public {
+        deal(address(usdai), users.manager, DEPOSIT_AMOUNT);
+
+        (uint256 depositBalanceBefore,) = stakedUsdai.balances();
+        uint256 usdaiBefore = IERC20(address(usdai)).balanceOf(address(stakedUsdai));
+
+        vm.startPrank(users.manager);
+        IERC20(address(usdai)).approve(address(stakedUsdai), DEPOSIT_AMOUNT);
+        vm.expectEmit(true, false, false, true, address(stakedUsdai));
+        emit ILoanRouterPositionManager.Donated(users.manager, DEPOSIT_AMOUNT);
+        stakedUsdai.donate(DEPOSIT_AMOUNT);
+        vm.stopPrank();
+
+        (uint256 depositBalanceAfter,) = stakedUsdai.balances();
+        assertEq(depositBalanceAfter, depositBalanceBefore + DEPOSIT_AMOUNT);
+        assertEq(IERC20(address(usdai)).balanceOf(address(stakedUsdai)), usdaiBefore + DEPOSIT_AMOUNT);
+    }
+
+    function test__Donate_RevertWhen_NotStrategyAdmin() public {
+        vm.prank(users.normalUser1);
+        vm.expectRevert();
+        stakedUsdai.donate(1 ether);
     }
 }

@@ -524,4 +524,14 @@ abstract contract LoanRouterPositionManager is
         /* Emit LoanDepositTimelockCancelled */
         emit LoanDepositTimelockCancelled(loanTermsHash, usdaiAmount);
     }
+
+    /**
+     * @inheritdoc ILoanRouterPositionManager
+     */
+    function donate(
+        uint256 usdaiAmount
+    ) external onlyRole(STRATEGY_ADMIN_ROLE) nonReentrant {
+        /* Handle donation accounting and transfer */
+        LoanRouterPositionManagerLogic.donate(_getDepositsStorage(), address(_usdai), usdaiAmount);
+    }
 }

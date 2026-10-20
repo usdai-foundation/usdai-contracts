@@ -627,4 +627,21 @@ library LoanRouterPositionManagerLogic {
         /* Return USDai amount */
         return usdaiAmount;
     }
+
+    /**
+     * @notice Donate USDai to the vault
+     * @param depositsStorage Deposits storage
+     * @param usdai USDai
+     * @param usdaiAmount USDai amount
+     */
+    function donate(StakedUSDaiStorage.Deposits storage depositsStorage, address usdai, uint256 usdaiAmount) external {
+        /* Update deposit balance */
+        depositsStorage.balance += usdaiAmount;
+
+        /* Transfer USDai from donor to the vault */
+        IERC20(usdai).transferFrom(msg.sender, address(this), usdaiAmount);
+
+        /* Emit Donated */
+        emit ILoanRouterPositionManager.Donated(msg.sender, usdaiAmount);
+    }
 }
