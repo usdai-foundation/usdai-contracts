@@ -6,6 +6,9 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 
 import {IUSDai} from "../interfaces/IUSDai.sol";
 
+import {IEscrowTimelock} from "@usdai-loan-router-contracts/interfaces/IEscrowTimelock.sol";
+import {IDepositTimelock} from "@usdai-loan-router-contracts/interfaces/IDepositTimelock.sol";
+import {ILoanRouterPositionManager} from "../interfaces/ILoanRouterPositionManager.sol";
 import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
 
 import {LoanRouterPositionManager} from "./LoanRouterPositionManager.sol";
@@ -109,7 +112,7 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle interest accrued hook
+     * @notice Handle escrow interest accrued
      * @param depositsStorage Deposits storage
      * @param usdai USDai
      * @param adminFeeRate Admin fee rate
@@ -521,30 +524,13 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle escrow cancelled interest accrued hook
-     * @param depositsStorage Deposits storage
-     * @param usdai USDai
-     * @param adminFeeRate Admin fee rate
-     * @param adminFeeRecipient Admin fee recipient
-     * @param interest Interest amount
-     */
-    function escrowCancelled(
-        StakedUSDaiStorage.Deposits storage depositsStorage,
-        address usdai,
-        uint256 adminFeeRate,
-        address adminFeeRecipient,
-        uint256 interest
-    ) external {
-        _escrowInterestAccrued(depositsStorage, usdai, adminFeeRate, adminFeeRecipient, interest);
-    }
-
-    /**
      * @notice Handle withdrawn escrow interest accrued hook
      * @param depositsStorage Deposits storage
      * @param usdai USDai
      * @param escrowTimelock Escrow timelock
      * @param adminFeeRate Admin fee rate
      * @param adminFeeRecipient Admin fee recipient
+     * @param loanTermsHash Loan terms hash
      * @param interest Interest amount
      */
     function escrowWithdrawn(
@@ -553,13 +539,22 @@ library LoanRouterPositionManagerLogic {
         address escrowTimelock,
         uint256 adminFeeRate,
         address adminFeeRecipient,
+        bytes32 loanTermsHash,
         uint256 interest
     ) external {
         /* Validate caller is escrow timelock */
         if (msg.sender != escrowTimelock) revert InvalidCaller();
 
+        /* Handle interest accrued */
         _escrowInterestAccrued(depositsStorage, usdai, adminFeeRate, adminFeeRecipient, interest);
+
+        /* Emit LoanEscrowTimelockWithdrawn */
+        emit ILoanRouterPositionManager.LoanEscrowTimelockWithdrawn(loanTermsHash, interest);
     }
+
+    /*------------------------------------------------------------------------*/
+    /* Timelock Logic */
+    /*------------------------------------------------------------------------*/
 
     /**
      * @notice Deposit funds
@@ -571,7 +566,7 @@ library LoanRouterPositionManagerLogic {
      * @param loanTermsHash Loan terms hash
      * @param timelock Timelock
      */
-    function depositFunds(
+    function _depositFunds(
         StakedUSDaiStorage.Deposits storage depositsStorage,
         StakedUSDaiStorage.RedemptionState storage redemptionStateStorage,
         LoanRouterPositionManager.DepositTimelock storage depositTimelockStorage,
@@ -579,7 +574,7 @@ library LoanRouterPositionManagerLogic {
         uint256 usdaiAmount,
         bytes32 loanTermsHash,
         address timelock
-    ) external {
+    ) internal {
         /* Get USDai balance */
         uint256 usdaiBalance = depositsStorage.balance - redemptionStateStorage.balance;
 
@@ -607,11 +602,11 @@ library LoanRouterPositionManagerLogic {
      * @param loanTermsHash Loan terms hash
      * @return USDai amount
      */
-    function withdrawFunds(
+    function _withdrawFunds(
         StakedUSDaiStorage.Deposits storage depositsStorage,
         LoanRouterPositionManager.DepositTimelock storage depositTimelockStorage,
         bytes32 loanTermsHash
-    ) external returns (uint256) {
+    ) internal returns (uint256) {
         /* Get USDai amount */
         uint256 usdaiAmount = depositTimelockStorage.amounts[loanTermsHash];
 
@@ -626,6 +621,151 @@ library LoanRouterPositionManagerLogic {
 
         /* Return USDai amount */
         return usdaiAmount;
+    }
+
+    /**
+     * @notice Deposit funds into escrow timelock
+     * @param depositsStorage Deposits storage
+     * @param redemptionStateStorage Redemption state storage
+     * @param depositTimelockStorage Deposit timelock storage
+     * @param usdai USDai
+     * @param escrowTimelock Escrow timelock
+     * @param loanRouter Loan router
+     * @param loanTermsHash Loan terms hash
+     * @param usdaiAmount USDai amount
+     * @param interestRate Interest rate
+     */
+    function depositEscrowTimelock(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
+        StakedUSDaiStorage.RedemptionState storage redemptionStateStorage,
+        LoanRouterPositionManager.DepositTimelock storage depositTimelockStorage,
+        address usdai,
+        address escrowTimelock,
+        address loanRouter,
+        bytes32 loanTermsHash,
+        uint256 usdaiAmount,
+        uint256 interestRate
+    ) external {
+        /* Handle deposit accounting and approval */
+        _depositFunds(
+            depositsStorage,
+            redemptionStateStorage,
+            depositTimelockStorage,
+            usdai,
+            usdaiAmount,
+            loanTermsHash,
+            escrowTimelock
+        );
+
+        /* Deposit funds against the V2 router */
+        IEscrowTimelock(escrowTimelock).deposit(loanRouter, loanTermsHash, usdai, usdaiAmount, interestRate);
+
+        /* Emit LoanEscrowTimelockDeposited */
+        emit ILoanRouterPositionManager.LoanEscrowTimelockDeposited(loanTermsHash, usdaiAmount, interestRate);
+    }
+
+    /**
+     * @notice Deposit funds into deposit timelock
+     * @param depositsStorage Deposits storage
+     * @param redemptionStateStorage Redemption state storage
+     * @param depositTimelockStorage Deposit timelock storage
+     * @param usdai USDai
+     * @param depositTimelock Deposit timelock
+     * @param loanRouter Loan router
+     * @param loanTermsHash Loan terms hash
+     * @param usdaiAmount USDai amount
+     * @param expiration Expiration timestamp
+     */
+    function depositDepositTimelock(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
+        StakedUSDaiStorage.RedemptionState storage redemptionStateStorage,
+        LoanRouterPositionManager.DepositTimelock storage depositTimelockStorage,
+        address usdai,
+        address depositTimelock,
+        address loanRouter,
+        bytes32 loanTermsHash,
+        uint256 usdaiAmount,
+        uint64 expiration
+    ) external {
+        /* Handle deposit accounting and approval */
+        _depositFunds(
+            depositsStorage,
+            redemptionStateStorage,
+            depositTimelockStorage,
+            usdai,
+            usdaiAmount,
+            loanTermsHash,
+            depositTimelock
+        );
+
+        /* Deposit funds against the V2 router */
+        IDepositTimelock(depositTimelock).deposit(loanRouter, loanTermsHash, usdai, usdaiAmount, expiration);
+
+        /* Emit LoanDepositTimelockDeposited */
+        emit ILoanRouterPositionManager.LoanDepositTimelockDeposited(loanTermsHash, usdaiAmount, expiration);
+    }
+
+    /**
+     * @notice Cancel escrow timelock deposit
+     * @param depositsStorage Deposits storage
+     * @param depositTimelockStorage Deposit timelock storage
+     * @param usdai USDai
+     * @param escrowTimelock Escrow timelock
+     * @param loanRouter Loan router
+     * @param adminFeeRate Admin fee rate
+     * @param adminFeeRecipient Admin fee recipient
+     * @param loanTermsHash Loan terms hash
+     */
+    function cancelEscrowTimelock(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
+        LoanRouterPositionManager.DepositTimelock storage depositTimelockStorage,
+        address usdai,
+        address escrowTimelock,
+        address loanRouter,
+        uint256 adminFeeRate,
+        address adminFeeRecipient,
+        bytes32 loanTermsHash
+    ) external {
+        /* Handle withdraw accounting */
+        uint256 usdaiAmount = _withdrawFunds(depositsStorage, depositTimelockStorage, loanTermsHash);
+
+        /* Cancel deposit */
+        (uint256 depositAmount, uint256 interestAmount) =
+            IEscrowTimelock(escrowTimelock).cancel(loanRouter, loanTermsHash);
+        if (depositAmount != usdaiAmount) revert ILoanRouterPositionManager.InvalidTimelockCancellation();
+
+        /* Handle interest accrued */
+        _escrowInterestAccrued(depositsStorage, usdai, adminFeeRate, adminFeeRecipient, interestAmount);
+
+        /* Emit LoanEscrowTimelockCancelled */
+        emit ILoanRouterPositionManager.LoanEscrowTimelockCancelled(loanTermsHash, usdaiAmount, interestAmount);
+    }
+
+    /**
+     * @notice Cancel deposit timelock deposit
+     * @param depositsStorage Deposits storage
+     * @param depositTimelockStorage Deposit timelock storage
+     * @param depositTimelock Deposit timelock
+     * @param loanRouter Loan router
+     * @param loanTermsHash Loan terms hash
+     */
+    function cancelDepositTimelock(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
+        LoanRouterPositionManager.DepositTimelock storage depositTimelockStorage,
+        address depositTimelock,
+        address loanRouter,
+        bytes32 loanTermsHash
+    ) external {
+        /* Handle withdraw accounting */
+        uint256 usdaiAmount = _withdrawFunds(depositsStorage, depositTimelockStorage, loanTermsHash);
+
+        /* Cancel deposit */
+        if (IDepositTimelock(depositTimelock).cancel(loanRouter, loanTermsHash) != usdaiAmount) {
+            revert ILoanRouterPositionManager.InvalidTimelockCancellation();
+        }
+
+        /* Emit LoanDepositTimelockCancelled */
+        emit ILoanRouterPositionManager.LoanDepositTimelockCancelled(loanTermsHash, usdaiAmount);
     }
 
     /**
