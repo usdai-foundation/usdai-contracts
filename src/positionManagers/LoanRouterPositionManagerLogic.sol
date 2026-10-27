@@ -346,9 +346,12 @@ library LoanRouterPositionManagerLogic {
         uint256 cashIn,
         address loanRouter
     ) external {
-        /* Validate hook context */
-        _validateHookContext(oldLoanTerms, 0, loanRouter);
-        _validateHookContext(newLoanTerms, 0, loanRouter);
+        /* Validate hook context for the old loan terms */
+        _validateHookContext(oldLoanTerms, trancheIndex, loanRouter);
+
+        /* Check if the new loan terms dropped this contract as the tranche lender */
+        bool isTrancheRemoved = trancheIndex >= newLoanTerms.trancheSpecs.length
+            || newLoanTerms.trancheSpecs[trancheIndex].lender != address(this);
 
         /* Get loans */
         LoanRouterPositionManager.Loan memory oldLoan = loansStorage.loan[oldLoanTermsHash];
@@ -358,7 +361,7 @@ library LoanRouterPositionManagerLogic {
         if (oldLoan.lastRepaymentTimestamp == 0) revert LoanNotFound();
 
         /* Revert if new loan is already tracked by this position manager */
-        if (newLoan.lastRepaymentTimestamp != 0) revert DuplicateOrigination();
+        if (!isTrancheRemoved && newLoan.lastRepaymentTimestamp != 0) revert DuplicateOrigination();
 
         /* Revert if old and new loan currency tokens are different */
         if (oldLoanTerms.currencyToken != newLoanTerms.currencyToken) revert InvalidCurrencyToken();
@@ -386,6 +389,15 @@ library LoanRouterPositionManagerLogic {
 
         /* Credit the cash-in principal to the deposit balance */
         depositsStorage.balance += cashIn;
+
+        /* Close out the tranche if the new loan terms removed it */
+        if (isTrancheRemoved) {
+            /* Remove the old pending balance from the total pending loan balance */
+            loansStorage.pendingBalances[oldLoanTerms.currencyToken] -= oldLoan.pendingBalance;
+
+            /* Skip the new loan entry since the tranche is paid out */
+            return;
+        }
 
         /* Update total pending loan balance by the notional delta */
         loansStorage.pendingBalances[oldLoanTerms.currencyToken] =

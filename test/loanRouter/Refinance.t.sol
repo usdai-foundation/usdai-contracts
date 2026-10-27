@@ -3,10 +3,14 @@ pragma solidity 0.8.29;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+
+import {Vm} from "forge-std/Vm.sol";
 
 import {ICollateralTimelock} from "@usdai-loan-router-contracts/interfaces/ICollateralTimelock.sol";
 import {IDepositTimelock} from "@usdai-loan-router-contracts/interfaces/IDepositTimelock.sol";
 import {ILoanRouterV2} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2.sol";
+import {ILoanRouterV2Hooks} from "@usdai-loan-router-contracts/interfaces/ILoanRouterV2Hooks.sol";
 
 import {IStakedUSDai} from "src/interfaces/IStakedUSDai.sol";
 
@@ -41,6 +45,9 @@ contract RefinanceTest is BaseLoanRouterTest {
 
     /* New total principal after the cash-in pay-down */
     uint256 internal constant NEW_PRINCIPAL_CASH_IN = 40_000_000 ether;
+
+    /* Other lender principal in the two-tranche loan */
+    uint256 internal constant OTHER_PRINCIPAL = 30_000_000 ether;
 
     /* Old rate (8% APR per second, 1e18 scaled) */
     uint256 internal constant OLD_RATE = RATE_10_PCT * 8 / 10;
@@ -247,6 +254,145 @@ contract RefinanceTest is BaseLoanRouterTest {
         assertApproxEqAbs(IStakedUSDai(address(stakedUsdai)).nav(), snap.nav, 1e15, "NAV not conserved");
     }
 
+    /**
+     * @notice A two-tranche loan refinances without the StakedUSDai tranche, which pays it out in full
+     */
+    function test__RefinanceRemovedTranche() public {
+        /* Originate a two-tranche loan with StakedUSDai as the second tranche lender */
+        address otherLender = makeAddr("otherLender");
+        (ILoanRouterV2.LoanTermsV2 memory oldTerms, bytes32 oldHash) =
+            _originateTwoTrancheLoan(otherLender, OTHER_PRINCIPAL, OLD_PRINCIPAL, OLD_RATE);
+
+        /* Warp to just before the first repayment deadline so the repayment is not overdue */
+        vm.warp(ILoanRouterV2(address(loanRouter)).deadlines(oldTerms)[0] - 1 hours);
+
+        /* Quote the current window repayment */
+        (uint256 principalPayment, uint256 interestPayment, uint256 feePayment) =
+            ILoanRouterV2(address(loanRouter)).quote(oldTerms);
+
+        /* Sum the repayment amount */
+        uint256 repaymentAmount = principalPayment + interestPayment + feePayment;
+
+        /* Fund the borrower for the repayment and approve the router */
+        deal(address(usdai), users.borrower, repaymentAmount);
+
+        vm.prank(users.borrower);
+        IERC20(address(usdai)).approve(address(loanRouter), repaymentAmount);
+
+        /* Borrower repays the current window before the refinance */
+        vm.prank(users.borrower);
+        ILoanRouterV2(address(loanRouter)).repay(oldTerms, repaymentAmount);
+
+        /* Read the router balance for the expected balance argument */
+        (,,, uint256 oldRouterBalance) = ILoanRouterV2(address(loanRouter)).loanState(oldHash);
+
+        /* Collect pre-refinance state */
+        Snap memory snap;
+        snap.loanRate = _loanAccrualRate(oldHash);
+        snap.poolRate = stakedUsdai.accrualRate();
+        snap.pendingBalance = _loanPendingBalance(oldHash);
+
+        /* The removed tranche is cashed in at the balance ratio, rounded up */
+        uint256 cashIn =
+            Math.mulDiv(OLD_PRINCIPAL, oldRouterBalance, OLD_PRINCIPAL + OTHER_PRINCIPAL, Math.Rounding.Ceil);
+
+        /* Router carries the old balance into the new loan at the remaining notional ratio */
+        snap.newBalance =
+            Math.mulDiv(oldRouterBalance, OTHER_PRINCIPAL, OLD_PRINCIPAL + OTHER_PRINCIPAL, Math.Rounding.Ceil);
+
+        /* Build new terms that keep only the other lender's tranche */
+        ILoanRouterV2.LoanTermsV2 memory newTerms = _newTerms(oldTerms, OTHER_PRINCIPAL, 0);
+        ILoanRouterV2.TrancheSpec[] memory trancheSpecs = new ILoanRouterV2.TrancheSpec[](1);
+        trancheSpecs[0] = newTerms.trancheSpecs[0];
+        newTerms.trancheSpecs = trancheSpecs;
+        snap.newHash = _loanHash(newTerms);
+
+        /* Fund the borrower for the cash-in and approve the router */
+        deal(address(usdai), users.borrower, cashIn);
+
+        vm.prank(users.borrower);
+        IERC20(address(usdai)).approve(address(loanRouter), cashIn);
+
+        /* Snapshot balances right before the refinance */
+        (snap.pending,) = stakedUsdai.loanRouterBalances();
+        snap.timelock = stakedUsdai.depositTimelockBalance();
+        snap.borrower = IERC20(address(usdai)).balanceOf(users.borrower);
+        snap.nav = IStakedUSDai(address(stakedUsdai)).nav();
+        (snap.deposits,) = stakedUsdai.balances();
+
+        /* Snapshot the strategy USDai holdings */
+        uint256 vaultTokens = IERC20(address(usdai)).balanceOf(address(stakedUsdai));
+
+        /* Expect the hook on the removed tranche carrying its cash-in and no cash-out */
+        vm.expectCall(
+            address(stakedUsdai),
+            abi.encodeWithSelector(
+                ILoanRouterV2Hooks.onLoanRefinanced.selector,
+                oldTerms,
+                newTerms,
+                oldHash,
+                snap.newHash,
+                uint8(1),
+                uint256(0),
+                cashIn
+            )
+        );
+
+        /* Record logs so the test can check that no hook failed */
+        vm.recordLogs();
+
+        /* Refinance the loan */
+        ILoanRouterV2(address(loanRouter)).refinance(oldTerms, newTerms, oldRouterBalance);
+
+        /* No hook failed */
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        for (uint256 i; i < logs.length; i++) {
+            assertTrue(logs[i].topics[0] != keccak256("HookFailed(string)"), "hook failed");
+        }
+
+        /* Router closed the old loan */
+        (ILoanRouterV2.LoanStatus oldStatus,,,) = ILoanRouterV2(address(loanRouter)).loanState(oldHash);
+        assertEq(uint8(oldStatus), uint8(ILoanRouterV2.LoanStatus.Repaid), "old loan not repaid");
+
+        /* Router opened the new loan at the remaining balance */
+        (ILoanRouterV2.LoanStatus newStatus,,, uint256 newRouterBalance) =
+            ILoanRouterV2(address(loanRouter)).loanState(snap.newHash);
+        assertEq(uint8(newStatus), uint8(ILoanRouterV2.LoanStatus.Active), "new loan not active");
+
+        assertEq(newRouterBalance, snap.newBalance, "new router balance wrong");
+
+        /* Aggregate pending shrank by the whole tracked balance */
+        (uint256 pendingAfter,) = stakedUsdai.loanRouterBalances();
+        assertEq(pendingAfter, snap.pending - snap.pendingBalance, "aggregate not shrunk by tracked balance");
+
+        /* Deposit balance grew by the cash-in */
+        (uint256 depositsAfter,) = stakedUsdai.balances();
+        assertEq(depositsAfter, snap.deposits + cashIn, "deposits balance wrong");
+
+        /* Deposit timelock not drawn */
+        assertEq(stakedUsdai.depositTimelockBalance(), snap.timelock, "timelock drawn");
+
+        /* Old loan entry cleared */
+        assertEq(_loanLastRepayment(oldHash), 0, "old loan entry not cleared");
+
+        /* No new loan entry */
+        assertEq(_loanLastRepayment(snap.newHash), 0, "new loan entry created");
+        assertEq(_loanPendingBalance(snap.newHash), 0, "new pending balance set");
+        assertEq(_loanAccrualRate(snap.newHash), 0, "new accrual rate set");
+
+        /* Pool accrual rate reversed the old rate */
+        assertEq(stakedUsdai.accrualRate(), snap.poolRate - snap.loanRate, "pool rate delta wrong");
+
+        /* Borrower paid the cash-in */
+        assertEq(IERC20(address(usdai)).balanceOf(users.borrower), snap.borrower - cashIn, "borrower cash-in wrong");
+
+        /* Strategy received the cash-in */
+        assertEq(IERC20(address(usdai)).balanceOf(address(stakedUsdai)), vaultTokens + cashIn, "strategy tokens wrong");
+
+        /* NAV is conserved because the cash-in matches the tracked balance */
+        assertApproxEqAbs(IStakedUSDai(address(stakedUsdai)).nav(), snap.nav, 1e15, "NAV not conserved");
+    }
+
     /*------------------------------------------------------------------------*/
     /* Internal helpers */
     /*------------------------------------------------------------------------*/
@@ -376,6 +522,80 @@ contract RefinanceTest is BaseLoanRouterTest {
         /* Build the deposit info for the deposit timelock */
         ILoanRouterV2.LenderDepositInfo[] memory depositInfos = new ILoanRouterV2.LenderDepositInfo[](1);
         depositInfos[0] =
+            ILoanRouterV2.LenderDepositInfo({depositType: ILoanRouterV2.DepositType.DepositTimelock, data: ""});
+
+        /* Originate the loan on-chain */
+        vm.prank(users.admin);
+        IAccessControl(address(loanRouter)).grantRole(keccak256("ORIGINATOR_ROLE"), users.admin);
+        vm.prank(users.admin);
+        loanRouter.originate(terms, depositInfos, new bytes[](0));
+    }
+
+    /**
+     * @notice Originate a two-tranche USDai loan with StakedUSDai as the second tranche lender
+     * @param otherLender First tranche lender
+     * @param otherPrincipal First tranche principal in USDai
+     * @param principal Second tranche principal in USDai
+     * @param rate Origination rate per second scaled by 1e18
+     * @return terms Loan terms
+     * @return loanTermsHash Loan terms hash
+     */
+    function _originateTwoTrancheLoan(
+        address otherLender,
+        uint256 otherPrincipal,
+        uint256 principal,
+        uint256 rate
+    ) internal returns (ILoanRouterV2.LoanTermsV2 memory terms, bytes32 loanTermsHash) {
+        /* Build standard terms with the total principal */
+        terms = createLoanTerms(otherPrincipal + principal, collateralTokenIds, address(usdai));
+
+        /* Split the principal into two tranches with StakedUSDai second */
+        ILoanRouterV2.TrancheSpec[] memory trancheSpecs = new ILoanRouterV2.TrancheSpec[](2);
+        trancheSpecs[0] = ILoanRouterV2.TrancheSpec({lender: otherLender, amount: otherPrincipal, rate: rate});
+        trancheSpecs[1] = ILoanRouterV2.TrancheSpec({lender: address(stakedUsdai), amount: principal, rate: rate});
+        terms.trancheSpecs = trancheSpecs;
+
+        /* Point the fee and rate specs at real models */
+        terms.feeSpecs[0].model = feeModel;
+        terms.interestRateSpec.model = rateModel;
+        terms.interestRateSpec.options = abi.encode(false, uint64(GRACE_PERIOD_DURATION), uint256(GRACE_PERIOD_RATE));
+
+        /* Hash the loan terms */
+        loanTermsHash = _loanHash(terms);
+
+        /* Borrower escrows the collateral into the collateral timelock */
+        vm.prank(users.borrower);
+        ICollateralTimelock(address(collateralTimelock)).deposit(
+            address(loanRouter), loanTermsHash, address(testNFT), terms.collateralTokenIds, terms.expiration
+        );
+
+        /* Let the other lender deposit into the deposit timelock */
+        vm.prank(users.admin);
+        IAccessControl(address(depositTimelock)).grantRole(keccak256("DEPOSITOR_ROLE"), otherLender);
+
+        /* Fund the other lender with its principal and deposit it into the deposit timelock */
+        deal(address(usdai), otherLender, otherPrincipal);
+        vm.startPrank(otherLender);
+        IERC20(address(usdai)).approve(address(depositTimelock), otherPrincipal);
+        IDepositTimelock(address(depositTimelock)).deposit(
+            address(loanRouter), loanTermsHash, address(usdai), otherPrincipal, terms.expiration
+        );
+        vm.stopPrank();
+
+        /* Fund StakedUSDai with its principal and deposit it into the deposit timelock */
+        deal(address(usdai), address(stakedUsdai), IERC20(address(usdai)).balanceOf(address(stakedUsdai)) + principal);
+        vm.startPrank(address(stakedUsdai));
+        IERC20(address(usdai)).approve(address(depositTimelock), principal);
+        IDepositTimelock(address(depositTimelock)).deposit(
+            address(loanRouter), loanTermsHash, address(usdai), principal, terms.expiration
+        );
+        vm.stopPrank();
+
+        /* Build the deposit info for both tranches */
+        ILoanRouterV2.LenderDepositInfo[] memory depositInfos = new ILoanRouterV2.LenderDepositInfo[](2);
+        depositInfos[0] =
+            ILoanRouterV2.LenderDepositInfo({depositType: ILoanRouterV2.DepositType.DepositTimelock, data: ""});
+        depositInfos[1] =
             ILoanRouterV2.LenderDepositInfo({depositType: ILoanRouterV2.DepositType.DepositTimelock, data: ""});
 
         /* Originate the loan on-chain */
