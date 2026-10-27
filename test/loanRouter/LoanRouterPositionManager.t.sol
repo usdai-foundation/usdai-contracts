@@ -171,6 +171,23 @@ contract LoanRouterPositionManagerTest is BaseLoanRouterTest {
     }
 
     /**
+     * @notice Deploy the real SimpleInterestRateModel, linking ScheduleLogic
+     * @return Interest rate model address
+     */
+    function _deploySimpleInterestRateModel() internal returns (address) {
+        /* Deploy ScheduleLogic which the model links against */
+        address scheduleLogicLib = _deployFromHex(
+            vm.parseJsonString(vm.readFile("externalOut/ScheduleLogic.sol/ScheduleLogic.json"), ".bytecode.object"), ""
+        );
+
+        /* Read, link, and deploy the model */
+        string memory json = vm.readFile("externalOut/SimpleInterestRateModel.sol/SimpleInterestRateModel.json");
+        bytes memory modelHex = bytes(vm.parseJsonString(json, ".bytecode.object"));
+        _linkLibrary(modelHex, json, "src/ScheduleLogic.sol", "ScheduleLogic", scheduleLogicLib);
+        return _deployFromHex(string(modelHex), "");
+    }
+
+    /**
      * @notice Originate a USDai loan through the real LoanRouterV2 with an Origination fee
      *         whose recipient is the StakedUSDai position manager. The router computes the
      *         fee with AbsoluteFeeModel, transfers it to StakedUSDai, and invokes the real
@@ -193,6 +210,11 @@ contract LoanRouterPositionManagerTest is BaseLoanRouterTest {
         loanTerms.feeSpecs[0].model = feeModel;
         loanTerms.feeSpecs[0].recipient = address(stakedUsdai);
         fee = abi.decode(loanTerms.feeSpecs[0].options, (uint256));
+
+        /* Point the rate spec at a real model since the router validates its options at origination */
+        loanTerms.interestRateSpec.model = _deploySimpleInterestRateModel();
+        loanTerms.interestRateSpec.options =
+            abi.encode(false, uint64(GRACE_PERIOD_DURATION), uint256(GRACE_PERIOD_RATE));
 
         bytes32 loanTermsHash = keccak256(abi.encode(block.chainid, loanTerms));
         uint64 expiration = loanTerms.expiration;
