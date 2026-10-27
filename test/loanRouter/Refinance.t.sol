@@ -21,12 +21,11 @@ import {BaseLoanRouterTest} from "./Base.t.sol";
  * @author USD.AI Foundation
  *
  * @notice Originates a large USDai loan on the local stack and lets interest accrue until
- *         just before the first repayment deadline, then refinances it at a higher rate.
+ *         just before the first repayment deadline, repays the current window, then
+ *         refinances it at a higher rate.
  *         The cash-out case grows the loan and funds the top-up from the deposit timelock.
  *         The cash-in case shrinks the loan and the borrower pays the difference back to
- *         the strategy. In both cases the refinance resets the accrued interest, a donation
- *         paid back to the strategy as a refinance fee offsets it, and the new loan starts
- *         on a fresh schedule.
+ *         the strategy. In both cases the new loan keeps the old repayment schedule.
  */
 contract RefinanceTest is BaseLoanRouterTest {
     /*------------------------------------------------------------------------*/
@@ -80,6 +79,9 @@ contract RefinanceTest is BaseLoanRouterTest {
         uint256 poolRate;
         uint256 loanRate;
         uint256 deposits;
+        uint256 pendingBalance;
+        uint256 newBalance;
+        uint64 origination;
     }
 
     /*------------------------------------------------------------------------*/
@@ -104,30 +106,50 @@ contract RefinanceTest is BaseLoanRouterTest {
     /*------------------------------------------------------------------------*/
 
     /**
-     * @notice A loan refinances into a larger cash-out loan with a donation
+     * @notice A loan repays its current window and then refinances into a larger cash-out loan
      */
     function test__RefinanceCashOut() public {
         /* Originate the loan and let interest accrue */
         (ILoanRouterV2.LoanTermsV2 memory oldTerms, bytes32 oldHash) = _originateLoan(OLD_PRINCIPAL, OLD_RATE);
 
-        /* Warp to just before the first repayment deadline so the refinance is not overdue */
+        /* Warp to just before the first repayment deadline so the repayment is not overdue */
         vm.warp(ILoanRouterV2(address(loanRouter)).deadlines(oldTerms)[0] - 1 hours);
 
-        /* Read the router balance for the expected balance argument */
-        (,,, uint256 oldRouterBalance) = ILoanRouterV2(address(loanRouter)).loanState(oldHash);
+        /* Quote the current window repayment */
+        (uint256 principalPayment, uint256 interestPayment, uint256 feePayment) =
+            ILoanRouterV2(address(loanRouter)).quote(oldTerms);
+
+        /* Sum the repayment amount */
+        uint256 repaymentAmount = principalPayment + interestPayment + feePayment;
+
+        /* Fund the borrower for the repayment and approve the router */
+        deal(address(usdai), users.borrower, repaymentAmount);
+
+        vm.prank(users.borrower);
+        IERC20(address(usdai)).approve(address(loanRouter), repaymentAmount);
+
+        /* Borrower repays the current window before the refinance */
+        vm.prank(users.borrower);
+        ILoanRouterV2(address(loanRouter)).repay(oldTerms, repaymentAmount);
+
+        /* Read the router origination and balance for the expected balance argument */
+        (,, uint64 oldOrigination, uint256 oldRouterBalance) = ILoanRouterV2(address(loanRouter)).loanState(oldHash);
 
         /* Collect pre-refinance state and derived amounts */
         Snap memory snap;
         snap.loanRate = _loanAccrualRate(oldHash);
         snap.poolRate = stakedUsdai.accrualRate();
-        snap.cashOut = NEW_PRINCIPAL - OLD_PRINCIPAL;
+        snap.pendingBalance = _loanPendingBalance(oldHash);
+        snap.origination = oldOrigination;
 
-        /* Reversed accrued interest is the loan's accrual over its window, net of the admin fee */
-        snap.donation = (snap.loanRate * (block.timestamp - _loanLastRepayment(oldHash)) / FIXED_POINT_SCALE)
-            * (BASIS_POINTS_SCALE - ADMIN_FEE_RATE) / BASIS_POINTS_SCALE;
+        /* Router draws cash-out in proportion to the notional increase */
+        snap.cashOut = Math.mulDiv(NEW_PRINCIPAL - OLD_PRINCIPAL, oldRouterBalance, OLD_PRINCIPAL);
 
-        /* Build new terms with the grown notional, higher rate, and donation fee */
-        ILoanRouterV2.LoanTermsV2 memory newTerms = _newTerms(oldTerms, NEW_PRINCIPAL, snap.donation);
+        /* Router carries the old balance into the new loan at the new notional ratio */
+        snap.newBalance = Math.mulDiv(oldRouterBalance, NEW_PRINCIPAL, OLD_PRINCIPAL, Math.Rounding.Ceil);
+
+        /* Build new terms with the grown notional, higher rate, and no donation */
+        ILoanRouterV2.LoanTermsV2 memory newTerms = _newTerms(oldTerms, NEW_PRINCIPAL, 0);
         snap.newHash = _loanHash(newTerms);
 
         /* Seed idle USDai and pre-fund the cash-out into the deposit timelock */
@@ -150,39 +172,59 @@ contract RefinanceTest is BaseLoanRouterTest {
     }
 
     /**
-     * @notice A loan refinances into a smaller cash-in loan with a donation
+     * @notice A loan repays its current window and then refinances into a smaller cash-in loan
      */
     function test__RefinanceCashIn() public {
         /* Originate the loan and let interest accrue */
         (ILoanRouterV2.LoanTermsV2 memory oldTerms, bytes32 oldHash) = _originateLoan(OLD_PRINCIPAL, OLD_RATE);
 
-        /* Warp to just before the first repayment deadline so the refinance is not overdue */
+        /* Warp to just before the first repayment deadline so the repayment is not overdue */
         vm.warp(ILoanRouterV2(address(loanRouter)).deadlines(oldTerms)[0] - 1 hours);
+
+        /* Quote the current window repayment */
+        (uint256 principalPayment, uint256 interestPayment, uint256 feePayment) =
+            ILoanRouterV2(address(loanRouter)).quote(oldTerms);
+
+        /* Sum the repayment amount */
+        uint256 repaymentAmount = principalPayment + interestPayment + feePayment;
+
+        /* Fund the borrower for the repayment and approve the router */
+        deal(address(usdai), users.borrower, repaymentAmount);
+
+        vm.prank(users.borrower);
+        IERC20(address(usdai)).approve(address(loanRouter), repaymentAmount);
+
+        /* Borrower repays the current window before the refinance */
+        vm.prank(users.borrower);
+        ILoanRouterV2(address(loanRouter)).repay(oldTerms, repaymentAmount);
 
         /* Read the router balance for the expected balance argument */
         (,,, uint256 oldRouterBalance) = ILoanRouterV2(address(loanRouter)).loanState(oldHash);
 
-        /* Collect pre-refinance state and derived amounts */
+        /* Collect pre-refinance state */
         Snap memory snap;
         snap.loanRate = _loanAccrualRate(oldHash);
         snap.poolRate = stakedUsdai.accrualRate();
 
-        /* Borrower pays down the difference between the old and new principal */
-        uint256 cashIn = OLD_PRINCIPAL - NEW_PRINCIPAL_CASH_IN;
+        /* Read the old loan balance that the position manager tracks */
+        uint256 oldPendingBalance = _loanPendingBalance(oldHash);
 
-        /* Reversed accrued interest is the loan's accrual over its window, net of the admin fee */
-        snap.donation = (snap.loanRate * (block.timestamp - _loanLastRepayment(oldHash)) / FIXED_POINT_SCALE)
-            * (BASIS_POINTS_SCALE - ADMIN_FEE_RATE) / BASIS_POINTS_SCALE;
+        /* Borrower pays down the old balance in proportion to the notional decrease */
+        uint256 cashIn =
+            Math.mulDiv(OLD_PRINCIPAL - NEW_PRINCIPAL_CASH_IN, oldRouterBalance, OLD_PRINCIPAL, Math.Rounding.Ceil);
 
-        /* Build new terms with the smaller notional, higher rate, and donation fee */
-        ILoanRouterV2.LoanTermsV2 memory newTerms = _newTerms(oldTerms, NEW_PRINCIPAL_CASH_IN, snap.donation);
+        /* Router carries the old balance into the new loan at the new notional ratio */
+        uint256 newBalance = Math.mulDiv(oldRouterBalance, NEW_PRINCIPAL_CASH_IN, OLD_PRINCIPAL, Math.Rounding.Ceil);
+
+        /* Build new terms with the smaller notional, higher rate, and no donation */
+        ILoanRouterV2.LoanTermsV2 memory newTerms = _newTerms(oldTerms, NEW_PRINCIPAL_CASH_IN, 0);
         bytes32 newHash = _loanHash(newTerms);
 
-        /* Fund the borrower for the cash-in and donation and approve the router */
-        deal(address(usdai), users.borrower, cashIn + snap.donation);
+        /* Fund the borrower for the cash-in and approve the router */
+        deal(address(usdai), users.borrower, cashIn);
 
         vm.prank(users.borrower);
-        IERC20(address(usdai)).approve(address(loanRouter), cashIn + snap.donation);
+        IERC20(address(usdai)).approve(address(loanRouter), cashIn);
 
         /* Snapshot balances right before the refinance */
         (snap.pending,) = stakedUsdai.loanRouterBalances();
@@ -206,23 +248,23 @@ contract RefinanceTest is BaseLoanRouterTest {
             ILoanRouterV2(address(loanRouter)).loanState(newHash);
         assertEq(uint8(newStatus), uint8(ILoanRouterV2.LoanStatus.Active), "new loan not active");
 
-        assertEq(newRouterBalance, NEW_PRINCIPAL_CASH_IN, "new router balance wrong");
+        assertEq(newRouterBalance, newBalance, "new router balance wrong");
 
         /* Aggregate pending shrank by the cash-in */
         (uint256 pendingAfter,) = stakedUsdai.loanRouterBalances();
         assertEq(pendingAfter, snap.pending - cashIn, "aggregate not shrunk by cash-in");
 
-        /* Deposit balance grew by the cash-in and the donation */
+        /* Deposit balance grew by the cash-in */
         (uint256 depositsAfter,) = stakedUsdai.balances();
-        assertEq(depositsAfter, snap.deposits + cashIn + snap.donation, "deposits balance wrong");
+        assertEq(depositsAfter, snap.deposits + cashIn, "deposits balance wrong");
 
         /* Deposit timelock not drawn */
         assertEq(stakedUsdai.depositTimelockBalance(), snap.timelock, "timelock drawn");
 
-        /* New loan tracked on a fresh schedule with the smaller balance */
-        assertEq(_loanPendingBalance(newHash), NEW_PRINCIPAL_CASH_IN, "new pending balance wrong");
+        /* New loan tracked with the old balance less the cash-in */
+        assertEq(_loanPendingBalance(newHash), oldPendingBalance - cashIn, "new pending balance wrong");
 
-        assertEq(_loanAccrualRate(newHash), NEW_RATE * NEW_PRINCIPAL_CASH_IN, "new accrual rate wrong");
+        assertEq(_loanAccrualRate(newHash), NEW_RATE * (oldPendingBalance - cashIn), "new accrual rate wrong");
 
         assertEq(_loanLastRepayment(newHash), uint64(block.timestamp), "repayment timestamp not reset");
 
@@ -232,25 +274,17 @@ contract RefinanceTest is BaseLoanRouterTest {
         /* Pool accrual rate reversed the old rate and added the new rate */
         assertEq(
             stakedUsdai.accrualRate(),
-            snap.poolRate - snap.loanRate + NEW_RATE * NEW_PRINCIPAL_CASH_IN,
+            snap.poolRate - snap.loanRate + NEW_RATE * (oldPendingBalance - cashIn),
             "pool rate delta wrong"
         );
 
-        /* Borrower paid the cash-in and the donation */
-        assertEq(
-            IERC20(address(usdai)).balanceOf(users.borrower),
-            snap.borrower - cashIn - snap.donation,
-            "borrower cash-in wrong"
-        );
+        /* Borrower paid the cash-in */
+        assertEq(IERC20(address(usdai)).balanceOf(users.borrower), snap.borrower - cashIn, "borrower cash-in wrong");
 
-        /* Strategy received the cash-in and the donation */
-        assertEq(
-            IERC20(address(usdai)).balanceOf(address(stakedUsdai)),
-            vaultTokens + cashIn + snap.donation,
-            "strategy tokens wrong"
-        );
+        /* Strategy received the cash-in */
+        assertEq(IERC20(address(usdai)).balanceOf(address(stakedUsdai)), vaultTokens + cashIn, "strategy tokens wrong");
 
-        /* NAV is conserved, the donation offsets the reversed accrued interest */
+        /* NAV is conserved because the repayment already settled the accrued interest */
         assertApproxEqAbs(IStakedUSDai(address(stakedUsdai)).nav(), snap.nav, 1e15, "NAV not conserved");
     }
 
@@ -410,8 +444,8 @@ contract RefinanceTest is BaseLoanRouterTest {
         (ILoanRouterV2.LoanStatus newStatus,, uint64 newOrigination, uint256 newRouterBalance) =
             ILoanRouterV2(address(loanRouter)).loanState(snap.newHash);
         assertEq(uint8(newStatus), uint8(ILoanRouterV2.LoanStatus.Active), "new loan not active");
-        assertEq(newRouterBalance, NEW_PRINCIPAL, "new router balance wrong");
-        assertEq(newOrigination, uint64(block.timestamp), "origination not reset");
+        assertEq(newRouterBalance, snap.newBalance, "new router balance wrong");
+        assertEq(newOrigination, snap.origination, "origination not kept");
 
         /* Aggregate pending grew by the cash-out */
         (uint256 pendingAfter,) = stakedUsdai.loanRouterBalances();
@@ -420,31 +454,31 @@ contract RefinanceTest is BaseLoanRouterTest {
         /* Deposit timelock drawn by the cash-out */
         assertEq(stakedUsdai.depositTimelockBalance(), snap.timelock - snap.cashOut, "timelock not drawn");
 
-        /* New loan tracked on a fresh schedule with the grown balance */
-        assertEq(_loanPendingBalance(snap.newHash), NEW_PRINCIPAL, "new pending balance wrong");
+        /* New loan tracked with the old balance plus the cash-out */
+        assertEq(_loanPendingBalance(snap.newHash), snap.pendingBalance + snap.cashOut, "new pending balance wrong");
         assertEq(_loanLastRepayment(snap.newHash), uint64(block.timestamp), "repayment timestamp not reset");
-        assertEq(_loanAccrualRate(snap.newHash), NEW_RATE * NEW_PRINCIPAL, "new accrual rate wrong");
+        assertEq(
+            _loanAccrualRate(snap.newHash), NEW_RATE * (snap.pendingBalance + snap.cashOut), "new accrual rate wrong"
+        );
 
         /* Old loan entry cleared */
         assertEq(_loanLastRepayment(oldHash), 0, "old loan entry not cleared");
 
         /* Deposit balance unchanged by the cash-out */
         (uint256 depositsAfter,) = stakedUsdai.balances();
-        assertEq(depositsAfter, snap.deposits + snap.donation, "deposits balance wrong");
+        assertEq(depositsAfter, snap.deposits, "deposits balance wrong");
 
         /* Pool accrual rate reversed the old rate and added the new rate */
         assertEq(
-            stakedUsdai.accrualRate(), snap.poolRate - snap.loanRate + NEW_RATE * NEW_PRINCIPAL, "pool rate delta wrong"
+            stakedUsdai.accrualRate(),
+            snap.poolRate - snap.loanRate + NEW_RATE * (snap.pendingBalance + snap.cashOut),
+            "pool rate delta wrong"
         );
 
-        /* Borrower received the cash-out top-up minus the donation fee */
-        assertEq(
-            IERC20(address(usdai)).balanceOf(borrower),
-            snap.borrower + snap.cashOut - snap.donation,
-            "borrower cash-out wrong"
-        );
+        /* Borrower received the cash-out top-up */
+        assertEq(IERC20(address(usdai)).balanceOf(borrower), snap.borrower + snap.cashOut, "borrower cash-out wrong");
 
-        /* NAV is conserved, the donation offsets the reversed accrued interest */
+        /* NAV is conserved because the repayment already settled the accrued interest */
         assertApproxEqAbs(IStakedUSDai(address(stakedUsdai)).nav(), snap.nav, 1e15, "NAV not conserved");
     }
 
