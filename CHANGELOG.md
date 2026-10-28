@@ -1,3 +1,8 @@
+* StakedUSDai v1.15 - 10/28/2026
+    * Add `donate()` API to `LoanRouterPositionManager`.
+    * Add support for tranche removal during refinance.
+    * Fix deposit balance state for cash-in refinance.
+
 * StakedUSDai v1.14 - 09/24/2026
     * Add support for cash-in refinance.
     * Fix principal dust in deposit and pending loan balance state.
