@@ -272,6 +272,27 @@ abstract contract LoanRouterPositionManager is
         );
     }
 
+    /**
+     * @inheritdoc IEscrowTimelockHooks
+     */
+    function onEscrowInterestRepaid(
+        address,
+        bytes32 loanTermsHash,
+        address,
+        uint256 interestAmount
+    ) external nonReentrant {
+        /* Handle escrow interest repaid */
+        LoanRouterPositionManagerLogic.escrowInterestRepaid(
+            _getDepositsStorage(),
+            address(_usdai),
+            _escrowTimelock,
+            _loanRouterAdminFeeRate,
+            _adminFeeRecipient,
+            loanTermsHash,
+            interestAmount
+        );
+    }
+
     /*------------------------------------------------------------------------*/
     /* Deposit Timelock Hooks */
     /*------------------------------------------------------------------------*/

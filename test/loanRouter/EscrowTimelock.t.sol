@@ -265,6 +265,66 @@ contract EscrowTimelockTest is BaseLoanRouterTest {
     }
 
     /*------------------------------------------------------------------------*/
+    /* onEscrowInterestRepaid (escrow admin calls repayInterest on the real EscrowTimelock) */
+    /*------------------------------------------------------------------------*/
+
+    function test__RepayEscrowLoanTimelockInterest_InterestRoutedToDepositBalance() public {
+        _depositEscrow();
+        warp(30 days);
+        uint256 repay = _expectedInterest(30 days) / 2;
+        uint256 expectedAdminFee = repay * LOAN_ROUTER_ADMIN_FEE_RATE / BASIS_POINTS_SCALE;
+
+        (uint256 depositBalanceBefore,) = stakedUsdai.balances();
+        uint256 adminFeeBalanceBefore = IERC20(address(usdai)).balanceOf(users.adminFeeRecipient);
+        uint256 navBefore = stakedUsdai.nav();
+
+        vm.expectEmit(true, false, false, true, address(stakedUsdai));
+        emit ILoanRouterPositionManager.LoanEscrowTimelockInterestRepaid(LOAN_HASH, repay);
+
+        vm.prank(users.admin);
+        escrowTimelock.repayInterest(address(loanRouter), LOAN_HASH, repay);
+
+        (uint256 depositBalanceAfter,) = stakedUsdai.balances();
+        assertEq(depositBalanceAfter - depositBalanceBefore, repay - expectedAdminFee);
+        assertEq(IERC20(address(usdai)).balanceOf(users.adminFeeRecipient) - adminFeeBalanceBefore, expectedAdminFee);
+
+        /* Repaid interest moves from accrued to deposit balance, so nav does not change */
+        assertApproxEqAbs(stakedUsdai.nav(), navBefore, 1);
+        assertEq(escrowTimelock.accrued(), _expectedInterest(30 days) - repay);
+    }
+
+    function test__RepayEscrowLoanTimelockInterest_CancelPaysRemainder() public {
+        _depositEscrow();
+        warp(30 days);
+        uint256 expectedInterest = _expectedInterest(30 days);
+        uint256 repay = expectedInterest / 2;
+
+        vm.prank(users.admin);
+        escrowTimelock.repayInterest(address(loanRouter), LOAN_HASH, repay);
+
+        vm.expectEmit(true, false, false, true, address(stakedUsdai));
+        emit ILoanRouterPositionManager.LoanEscrowTimelockCancelled(LOAN_HASH, DEPOSIT_AMOUNT, expectedInterest - repay);
+
+        vm.prank(users.manager);
+        stakedUsdai.cancelLoanEscrowTimelock(LOAN_HASH);
+    }
+
+    function test__RepayInterest_RevertWhen_CallerNotEscrowAdmin() public {
+        _depositEscrow();
+        warp(30 days);
+        vm.expectRevert(IEscrowTimelock.InvalidCaller.selector);
+        vm.prank(users.manager);
+        escrowTimelock.repayInterest(address(loanRouter), LOAN_HASH, 1);
+    }
+
+    function test__OnEscrowInterestRepaid_RevertWhen_CallerNotEscrowTimelock() public {
+        _depositEscrow();
+        vm.expectRevert(LoanRouterPositionManagerLogic.InvalidCaller.selector);
+        vm.prank(users.normalUser1);
+        stakedUsdai.onEscrowInterestRepaid(address(loanRouter), LOAN_HASH, address(usdai), 0);
+    }
+
+    /*------------------------------------------------------------------------*/
     /* Accrued escrow interest in valuation */
     /*------------------------------------------------------------------------*/
 

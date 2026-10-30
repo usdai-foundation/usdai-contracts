@@ -536,7 +536,7 @@ library LoanRouterPositionManagerLogic {
     }
 
     /**
-     * @notice Handle withdrawn escrow interest accrued hook
+     * @notice Handle escrow withdrawn hook
      * @param depositsStorage Deposits storage
      * @param usdai USDai
      * @param escrowTimelock Escrow timelock
@@ -562,6 +562,35 @@ library LoanRouterPositionManagerLogic {
 
         /* Emit LoanEscrowTimelockWithdrawn */
         emit ILoanRouterPositionManager.LoanEscrowTimelockWithdrawn(loanTermsHash, interest);
+    }
+
+    /**
+     * @notice Handle escrow interest repaid hook
+     * @param depositsStorage Deposits storage
+     * @param usdai USDai
+     * @param escrowTimelock Escrow timelock
+     * @param adminFeeRate Admin fee rate
+     * @param adminFeeRecipient Admin fee recipient
+     * @param loanTermsHash Loan terms hash
+     * @param interest Interest amount
+     */
+    function escrowInterestRepaid(
+        StakedUSDaiStorage.Deposits storage depositsStorage,
+        address usdai,
+        address escrowTimelock,
+        uint256 adminFeeRate,
+        address adminFeeRecipient,
+        bytes32 loanTermsHash,
+        uint256 interest
+    ) external {
+        /* Validate caller is escrow timelock */
+        if (msg.sender != escrowTimelock) revert InvalidCaller();
+
+        /* Handle interest accrued */
+        _escrowInterestAccrued(depositsStorage, usdai, adminFeeRate, adminFeeRecipient, interest);
+
+        /* Emit LoanEscrowTimelockInterestRepaid */
+        emit ILoanRouterPositionManager.LoanEscrowTimelockInterestRepaid(loanTermsHash, interest);
     }
 
     /*------------------------------------------------------------------------*/

@@ -35,6 +35,13 @@ interface ILoanRouterPositionManager {
     event LoanEscrowTimelockWithdrawn(bytes32 indexed loanTermsHash, uint256 interestAmount);
 
     /**
+     * @notice Loan escrow timelock interest repaid
+     * @param loanTermsHash Loan terms hash
+     * @param interestAmount Interest amount (in USDai)
+     */
+    event LoanEscrowTimelockInterestRepaid(bytes32 indexed loanTermsHash, uint256 interestAmount);
+
+    /**
      * @notice Loan escrow timelock cancelled
      * @param loanTermsHash Loan terms hash
      * @param usdaiAmount Deposited USDai amount
