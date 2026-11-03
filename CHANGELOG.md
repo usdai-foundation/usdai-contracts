@@ -1,3 +1,6 @@
+* StakedUSDai v1.16 - 11/04/2026
+    * Add support for escrow interest repayment to `LoanRouterPositionManager`.
+
 * StakedUSDai v1.15 - 10/28/2026
     * Add `donate()` API to `LoanRouterPositionManager`.
     * Add support for tranche removal during refinance.
