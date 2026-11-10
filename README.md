@@ -5,7 +5,7 @@
 Clone:
 
 ```shell
-$ git clone --recursive https://github.com/metastreet-labs/metastreet-usdai-contracts.git
+$ git clone --recursive https://github.com/usdai-foundation/usdai-contracts.git
 ```
 
 Build:
@@ -30,4 +30,4 @@ $ git submodule update --init --recursive
 
 ## License
 
-USDai Contracts are primarily BUSL-1.1 [licensed](LICENSE). Interfaces are MIT licensed.
+USDai Contracts are primarily [BUSL-1.1 licensed](LICENSE). Interfaces are MIT licensed.
